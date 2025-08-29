@@ -1,0 +1,6 @@
+
+-- Tables pour l'API
+CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT);
+CREATE TABLE IF NOT EXISTS bins (id TEXT PRIMARY KEY, lat REAL, lng REAL, full INTEGER, updatedAt INTEGER);
+CREATE TABLE IF NOT EXISTS blackspots (id TEXT PRIMARY KEY, lat REAL, lng REAL, note TEXT, open INTEGER, createdAt INTEGER);
+CREATE TABLE IF NOT EXISTS photos (id TEXT PRIMARY KEY, type TEXT, refId TEXT, path TEXT, note TEXT, createdAt INTEGER);
