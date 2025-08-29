@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · SOS Safi — Dashboard</title>
+  <meta name="description" content="Dashboard Administrateur : suivi des bacs, points noirs, photos, création de missions, import/export multi-agents." />
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#111827">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <style>.leaflet-container{background:#f6f7f9}.badge{font-size:.70rem}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-3">
+      <img src="./icons/192.png" class="h-8 w-8 rounded-lg" alt="logo">
+      <div>
+        <h1 class="text-lg font-semibold leading-tight">SOS Safi — <span class="text-slate-800">Admin</span></h1>
+        <p class="text-xs text-slate-500">Suivi global · Missions · Import/Export multi-agents · Offline</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2 text-xs">
+        <span id="sumBins" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">bacs 0</span>
+        <span id="sumBlack" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">points 0</span>
+        <span id="sumPhotos" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">photos 0</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">
+    <!-- Carte -->
+    <section class="lg:col-span-2 space-y-3">
+      <div id="map" class="h-[68vh] rounded-2xl shadow-sm border border-slate-200"></div>
+      <div class="flex flex-wrap gap-2">
+        <label class="px-3 py-2 bg-slate-200 rounded-xl cursor-pointer text-sm">Importer agents
+          <input id="fileImport" type="file" accept=".zip,.json,application/json" class="hidden" multiple>
+        </label>
+        <button id="btnExportMerged" class="px-3 py-2 bg-indigo-600 text-white rounded-xl text-sm">Exporter global</button>
+        <button id="btnClear" class="px-3 py-2 bg-rose-600 text-white rounded-xl text-sm">Effacer</button>
+      </div>
+    </section>
+
+    <!-- Panneau -->
+    <aside class="space-y-4">
+      <!-- Stats -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100"><h2 class="font-semibold">Statistiques</h2></div>
+        <div class="p-4 grid grid-cols-2 gap-3 text-sm">
+          <div class="p-3 rounded-xl bg-emerald-50 border"><div class="text-xs text-emerald-700">Bacs pleins</div><div id="statFull" class="text-2xl font-semibold">0</div></div>
+          <div class="p-3 rounded-xl bg-sky-50 border"><div class="text-xs text-sky-700">Points noirs ouverts</div><div id="statOpen" class="text-2xl font-semibold">0</div></div>
+          <div class="p-3 rounded-xl bg-amber-50 border"><div class="text-xs text-amber-700">Photos</div><div id="statPhotos" class="text-2xl font-semibold">0</div></div>
+          <div class="p-3 rounded-xl bg-slate-50 border"><div class="text-xs text-slate-700">Éléments</div><div id="statAll" class="text-2xl font-semibold">0</div></div>
+        </div>
+      </div>
+
+      <!-- Mission builder -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Préparer une mission</h2>
+          <button id="btnDownloadMission" class="px-3 py-2 bg-slate-900 text-white rounded-xl text-sm">Télécharger</button>
+        </div>
+        <div class="p-4 text-sm space-y-2">
+          <input id="missionName" class="w-full px-3 py-2 border rounded-xl" placeholder="Nom de la mission (ex: Tournée matin)">
+          <textarea id="missionNotes" class="w-full px-3 py-2 border rounded-xl" placeholder="Notes (consignes, codes portails…)"></textarea>
+          <div class="text-xs text-slate-500">Sélectionnez sur la carte: Ctrl+clic pour ajouter/retirer un point noir, Shift+clic pour un bac plein.</div>
+          <ul id="missionList" class="space-y-1 max-h-32 overflow-auto"></ul>
+          <canvas id="missionQR" class="w-full max-w-xs mx-auto border rounded-xl"></canvas>
+        </div>
+      </div>
+
+      <!-- Photos -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Photos importées</h2>
+        </div>
+        <div id="photoGrid" class="p-3 grid grid-cols-3 gap-2 max-h-52 overflow-auto"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-500">
+    © <span id="year"></span> SOS — Safi. Dashboard Admin (PWA). Données locales; pour la synchro multi-appareils, voir serveur optionnel.
+  </footer>
+
+  <script type="module">
+    const $ = (s)=>document.querySelector(s);
+    const DEFAULT_CENTER = { lat: 32.299, lng: -9.237 };
+    const merged = { bins:{}, blackSpots:[], photos:[] };
+    const mission = { name:'', notes:'', items:[] }; // {type,id,lat,lng}
+    let map; const binMarkers = new Map(); const blackMarkers = new Map();
+
+    function initMap(){
+      map = L.map('map').setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+      map.on('click', (e)=>{});
+    }
+
+    function drawOrUpdateBinMarker(bin){
+      const icon = L.divIcon({ className:'custom-div-icon',
+        html:`<div class="rounded-xl px-2 py-1 text-white bg-${bin.full?'rose':'emerald'}-600 shadow">🗑️ ${bin.id}</div>`,
+        iconSize:[30,30], iconAnchor:[15,15]});
+      let m = binMarkers.get(bin.id);
+      if(!m){
+        m = L.marker([bin.lat, bin.lng], { icon }).addTo(map);
+        m.on('click', (ev) => toggleSelect('bin', bin));
+        m.on('contextmenu', (ev) => toggleSelect('bin', bin));
+        binMarkers.set(bin.id, m);
+      } else { m.setLatLng([bin.lat,bin.lng]); m.setIcon(icon); }
+    }
+    function drawOrUpdateBlackMarker(sp){
+      const icon = L.divIcon({ className:'custom-div-icon',
+        html:`<div class="rounded-xl px-2 py-1 text-white bg-slate-800 shadow">⚠️ ${sp.note||'Point noir'}</div>`,
+        iconSize:[30,30], iconAnchor:[15,15]});
+      let m = blackMarkers.get(sp.id);
+      if(!m){
+        m = L.marker([sp.lat, sp.lng], { icon }).addTo(map);
+        m.on('click', (ev) => toggleSelect('black', sp));
+        m.on('contextmenu', (ev) => toggleSelect('black', sp));
+        blackMarkers.set(sp.id, m);
+      } else { m.setLatLng([sp.lat,sp.lng]); m.setIcon(icon); }
+    }
+
+    function toggleSelect(type, obj){
+      const idx = mission.items.findIndex(it=>it.type===type && it.id===obj.id);
+      if(idx>=0){ mission.items.splice(idx,1); }
+      else{ mission.items.push({ type, id:obj.id, lat:obj.lat, lng:obj.lng }); }
+      renderMissionList(); drawMissionQR();
+    }
+
+    function renderMissionList(){
+      const ul = $('#missionList'); ul.innerHTML='';
+      for(const it of mission.items){
+        const li = document.createElement('li'); li.className='flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2';
+        li.innerHTML = `<div class="text-sm">${it.type==='bin'?'🗑️':'⚠️'} <b>${it.id}</b> · <span class="text-slate-500">${it.lat.toFixed(5)}, ${it.lng.toFixed(5)}</span></div>`;
+        const b = document.createElement('button'); b.textContent='Retirer'; b.className='px-2 py-1 text-xs bg-slate-200 rounded-lg';
+        b.onclick=()=>{ mission.items = mission.items.filter(x=>!(x.type===it.type && x.id===it.id)); renderMissionList(); drawMissionQR(); };
+        li.append(b); ul.append(li);
+      }
+    }
+
+    function updateStatChips(){
+      $('#sumBins').textContent = `bacs ${Object.keys(merged.bins).length}`;
+      $('#sumBlack').textContent = `points ${merged.blackSpots.length}`;
+      $('#sumPhotos').textContent = `photos ${merged.photos.length}`;
+      const full = Object.values(merged.bins).filter(b=>b.full).length;
+      const open = merged.blackSpots.filter(s=>s.open).length;
+      $('#statFull').textContent = String(full);
+      $('#statOpen').textContent = String(open);
+      $('#statPhotos').textContent = String(merged.photos.length);
+      $('#statAll').textContent = String(Object.keys(merged.bins).length + merged.blackSpots.length);
+    }
+
+    function renderAll(){
+      // nettoyer puis repeindre
+      for(const m of binMarkers.values()) map.removeLayer(m); binMarkers.clear();
+      for(const m of blackMarkers.values()) map.removeLayer(m); blackMarkers.clear();
+      for(const id in merged.bins) drawOrUpdateBinMarker(merged.bins[id]);
+      for(const sp of merged.blackSpots) drawOrUpdateBlackMarker(sp);
+      updateStatChips();
+      renderMissionList();
+      renderPhotos();
+    }
+
+    function renderPhotos(){
+      const grid = $('#photoGrid'); grid.innerHTML='';
+      for(const p of merged.photos.slice().reverse()){
+        // dataURL attendu (si zip importé, on construit des URL blob à la volée)
+        const img = document.createElement('img'); img.src = p.previewURL || p.dataURL; img.className='w-full h-24 object-cover rounded-lg border';
+        img.title = `${p.type}:${p.refId}`; grid.append(img);
+      }
+    }
+
+    // Import (.json or .zip from agents)
+    async function importAgentFile(file){
+      if(file.name.endsWith('.zip')){
+        const buf = await file.arrayBuffer();
+        // parse zip using Web streams (no external lib here), so fallback to <input multiple> expecting JSON separately
+        // If JSZip is preferred, admin can drag the JSON and the photos folder extracted.
+        alert('Import ZIP : merci de décompresser et d\'importer le fichier data.json (et photos si besoin).');
+        return;
+      }
+      const text = await file.text();
+      const obj = JSON.parse(text);
+      // merge bins
+      for(const id in obj.bins||{}){
+        const b = obj.bins[id];
+        const prev = merged.bins[id];
+        if(!prev || (b.updatedAt||0) > (prev.updatedAt||0)){ merged.bins[id] = b; }
+      }
+      // merge black spots (distinct by id)
+      for(const sp of obj.blackSpots||[]){
+        const idx = merged.blackSpots.findIndex(x=>x.id===sp.id);
+        if(idx>=0){
+          // take most recent open/coords
+          if((sp.createdAt||0) > (merged.blackSpots[idx].createdAt||0)) merged.blackSpots[idx]=sp;
+        } else merged.blackSpots.push(sp);
+      }
+      // photos (inline)
+      if(Array.isArray(obj.photos)){
+        for(const p of obj.photos){
+          const url = p.dataURL;
+          merged.photos.push({ ...p, dataURL:url });
+        }
+      }
+    }
+
+    // Export merged
+    function exportMerged(){
+      const blob = new Blob([JSON.stringify(merged, null, 2)], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='sos-safi-merged.json'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    // Mission QR / JSON
+    function drawMissionQR(){
+      const canvas = $('#missionQR');
+      const payload = { type:'mission', name:$('#missionName').value.trim()||'Mission', notes:$('#missionNotes').value.trim(), items:mission.items };
+      const txt = JSON.stringify(payload);
+      // clear and draw
+      const ctx = canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height);
+      QRCode.toCanvas(canvas, txt, { width: 256 }, function (error) {});
+    }
+    function downloadMission(){
+      const payload = { type:'mission', name:$('#missionName').value.trim()||'Mission', notes:$('#missionNotes').value.trim(), items:mission.items };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='mission.json'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    // Events
+    $('#fileImport').addEventListener('change', async (e)=>{
+      const files = Array.from(e.target.files||[]);
+      for(const f of files){ await importAgentFile(f); }
+      renderAll();
+      e.target.value='';
+    });
+    $('#btnExportMerged').addEventListener('click', exportMerged);
+    $('#btnClear').addEventListener('click', ()=>{ if(confirm('Effacer les données chargées ?')){ merged.bins={}; merged.blackSpots=[]; merged.photos=[]; renderAll(); }});
+    $('#btnDownloadMission').addEventListener('click', downloadMission);
+    $('#missionName').addEventListener('input', drawMissionQR);
+    $('#missionNotes').addEventListener('input', drawMissionQR);
+
+    // Boot
+    $('#year').textContent = new Date().getFullYear();
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
+    initMap();
+    drawMissionQR();
+  </script>
+</body>
+</html>
