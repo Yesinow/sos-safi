@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent · SOS Safi — Poubelles & Points noirs</title>
+  <meta name="description" content="Application Agent terrain : scan QR, photos, points noirs, itinéraires, offline." />
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#059669">
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <!-- jsQR -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- JSZip (optionnel pour export .zip) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    #scannerVideo { transform: scaleX(-1); }
+    .leaflet-container { background:#f6f7f9; }
+    .badge { font-size:.70rem; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-3">
+      <img src="./icons/192.png" class="h-8 w-8 rounded-lg" alt="logo">
+      <div>
+        <h1 class="text-lg font-semibold leading-tight">SOS Safi — <span class="text-emerald-700">Agent</span></h1>
+        <p class="text-xs text-slate-500">Scan QR · Photos · Points noirs · Itinéraires · Offline</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2 text-xs">
+        <span id="gpsStatus" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">GPS…</span>
+        <span id="syncStatus" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">Local</span>
+        <span id="taskStats" class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 badge">0 à traiter</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 p-4">
+    <!-- Carte -->
+    <section class="lg:col-span-2">
+      <div id="map" class="h-[68vh] rounded-2xl shadow-sm border border-slate-200"></div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button id="btnCenterOnUser" class="px-3 py-2 bg-slate-900 text-white rounded-xl shadow-sm">Centrer sur moi</button>
+        <button id="btnComputeRoute" class="px-3 py-2 bg-emerald-600 text-white rounded-xl shadow-sm">Calculer l'itinéraire</button>
+        <button id="btnClearRoute" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-xl shadow-sm">Effacer</button>
+        <button id="btnOpenGMaps" class="px-3 py-2 bg-indigo-600 text-white rounded-xl shadow-sm opacity-50" disabled>Ouvrir Google Maps</button>
+        <button id="btnAddPhotoHere" class="px-3 py-2 bg-amber-500 text-white rounded-xl shadow-sm">Photo ici</button>
+      </div>
+    </section>
+
+    <!-- Panneau -->
+    <aside class="space-y-4">
+      <!-- Scan QR -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Scanner un QR (poubelle)</h2>
+          <span class="text-xs text-slate-500">Marque/ajoute un bac</span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex gap-2">
+            <button id="btnStartScan" class="px-3 py-2 bg-emerald-600 text-white rounded-xl">Démarrer</button>
+            <button id="btnStopScan" class="px-3 py-2 bg-slate-200 text-slate-800 rounded-xl" disabled>Arrêter</button>
+          </div>
+          <div class="relative rounded-xl overflow-hidden border border-slate-200">
+            <video id="scannerVideo" class="w-full h-52 object-cover bg-black/70" playsinline></video>
+            <canvas id="scannerCanvas" class="hidden"></canvas>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="h-28 w-28 border-4 border-emerald-500 rounded-xl"></div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500">Formats: <code>SOSBIN:&lt;id&gt;:&lt;lat&gt;,&lt;lng&gt;</code> ou JSON {"type":"bin","id":"...","lat":..,"lng":..}</p>
+        </div>
+      </div>
+
+      <!-- Ajouter/éditer -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100">
+          <h2 class="font-semibold">Ajouter / Mettre à jour</h2>
+        </div>
+        <div class="p-4 grid grid-cols-2 gap-2 text-sm">
+          <input id="inBinId" class="col-span-2 px-3 py-2 border rounded-xl" placeholder="ID bac (ex: AF-102)">
+          <input id="inLat" class="px-3 py-2 border rounded-xl" placeholder="Latitude">
+          <input id="inLng" class="px-3 py-2 border rounded-xl" placeholder="Longitude">
+          <div class="col-span-2 flex gap-2">
+            <button id="btnAddBin" class="px-3 py-2 bg-slate-900 text-white rounded-xl">Ajouter</button>
+            <button id="btnDeclareFull" class="px-3 py-2 bg-rose-600 text-white rounded-xl">Marquer plein</button>
+            <button id="btnPhotoBin" class="px-3 py-2 bg-amber-500 text-white rounded-xl">+ Photo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Points noirs -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Points noirs</h2>
+          <button id="btnAddBlackSpotHere" class="px-3 py-2 bg-slate-900 text-white rounded-xl text-sm">Déclarer ici</button>
+        </div>
+        <div class="p-4 space-y-2 text-sm">
+          <input id="inBlackSpotNote" class="w-full px-3 py-2 border rounded-xl" placeholder="Note (ex: dépôts sauvages)">
+          <ul id="blackSpotList" class="space-y-1"></ul>
+        </div>
+      </div>
+
+      <!-- File d'interventions -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Poubelles à libérer</h2>
+          <button id="btnClearQueue" class="text-xs px-2 py-1 bg-slate-200 rounded-lg">Vider</button>
+        </div>
+        <div class="p-3 text-sm max-h-56 overflow-auto">
+          <ul id="queueList" class="space-y-2"></ul>
+        </div>
+      </div>
+
+      <!-- Galerie photos -->
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold">Galerie (local)</h2>
+          <button id="btnExport" class="px-3 py-2 bg-indigo-600 text-white rounded-xl text-sm">Exporter</button>
+        </div>
+        <div id="photoGrid" class="p-3 grid grid-cols-3 gap-2 max-h-56 overflow-auto"></div>
+        <div class="p-3">
+          <label class="px-3 py-2 bg-slate-200 rounded-xl cursor-pointer text-sm">Importer
+            <input id="fileImport" type="file" accept=".json,application/json" class="hidden">
+          </label>
+          <button id="btnReset" class="px-3 py-2 bg-rose-600 text-white rounded-xl text-sm">Réinitialiser</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-500">
+    © <span id="year"></span> SOS — Safi. Application Agent (PWA, offline). OpenStreetMap & Leaflet.
+  </footer>
+
+  <input id="photoInput" type="file" accept="image/*" capture="environment" class="hidden" />
+
+  <script type="module">
+    import * as DB from './db.js';
+
+    /* === Données locales (étend l'app d'origine) === */
+    const DEFAULT_CENTER = { lat: 32.299, lng: -9.237 };
+    const storageKey = 'sos-safi-v2'; // nouvelle version (séparée de v1)
+    const $ = (s)=>document.querySelector(s);
+
+    const state = {
+      bins: {}, // {id,lat,lng,full,updatedAt,photos?:string[]}
+      queue: [],
+      blackSpots: [], // {id,lat,lng,note,open,createdAt,photos?:string[]}
+      route: null,
+      user: { lat:null, lng:null }
+    };
+
+    // UI refs
+    const els = {
+      map: $('#map'), gps: $('#gpsStatus'), stats: $('#taskStats'),
+      queueList: $('#queueList'), photoGrid: $('#photoGrid'),
+      inBinId: $('#inBinId'), inLat: $('#inLat'), inLng: $('#inLng'),
+      inBlackSpotNote: $('#inBlackSpotNote'),
+      fileImport: $('#fileImport'), photoInput: $('#photoInput'),
+      btnOpenGMaps: $('#btnOpenGMaps')
+    };
+
+    // Map
+    let map, userMarker, routeLine;
+    const binMarkers = new Map();
+    const blackMarkers = new Map();
+    function initMap(){
+      map = L.map('map').setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+      for(const id in state.bins){ drawOrUpdateBinMarker(state.bins[id]); }
+      for(const sp of state.blackSpots){ drawOrUpdateBlackMarker(sp); }
+      map.on('click', (e)=>{
+        els.inLat.value = e.latlng.lat.toFixed(6);
+        els.inLng.value = e.latlng.lng.toFixed(6);
+      });
+    }
+    function drawOrUpdateBinMarker(bin){
+      const icon = L.divIcon({ className:'custom-div-icon',
+        html: `<div class="rounded-xl px-2 py-1 text-white bg-${bin.full?'rose':'emerald'}-600 shadow">🗑️ ${bin.id}</div>`,
+        iconSize:[30,30], iconAnchor:[15,15]});
+      let m = binMarkers.get(bin.id);
+      if(!m){
+        m = L.marker([bin.lat, bin.lng], { icon }).addTo(map);
+        m.on('click', () => selectBin(bin.id));
+        binMarkers.set(bin.id, m);
+      } else {
+        m.setLatLng([bin.lat, bin.lng]); m.setIcon(icon);
+      }
+    }
+    function drawOrUpdateBlackMarker(sp){
+      const icon = L.divIcon({ className:'custom-div-icon',
+        html:`<div class="rounded-xl px-2 py-1 text-white bg-slate-800 shadow">⚠️ ${sp.note||'Point noir'}</div>`,
+        iconSize:[30,30], iconAnchor:[15,15]});
+      let m = blackMarkers.get(sp.id);
+      if(!m){
+        m = L.marker([sp.lat, sp.lng], { icon }).addTo(map);
+        m.on('click', () => focusBlack(sp.id));
+        blackMarkers.set(sp.id, m);
+      } else { m.setLatLng([sp.lat, sp.lng]); m.setIcon(icon); }
+    }
+
+    // Load/save
+    function loadState(){
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if(raw) Object.assign(state, JSON.parse(raw));
+      } catch(e){ console.warn('loadState', e); }
+      renderAll();
+    }
+    function saveState(){ localStorage.setItem(storageKey, JSON.stringify(state)); updateStats(); }
+
+    function updateGPSStatus(msg, ok){
+      els.gps.textContent = msg;
+      els.gps.className = 'px-2 py-1 rounded-full badge '+(ok?'bg-emerald-100 text-emerald-700':'bg-slate-100 text-slate-600');
+    }
+    function getUserPosition(){
+      if(!('geolocation' in navigator)){ updateGPSStatus('GPS non dispo', false); return; }
+      navigator.geolocation.getCurrentPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+        state.user = { lat: latitude, lng: longitude };
+        updateGPSStatus('GPS OK', true);
+        if(!userMarker) userMarker = L.marker([latitude, longitude],{title:'Vous'}).addTo(map);
+        userMarker.setLatLng([latitude, longitude]);
+      }, () => updateGPSStatus('GPS refusé', false), { enableHighAccuracy:true, maximumAge:15000, timeout:10000 });
+    }
+
+    // Bins
+    function addOrUpdateBin(id, lat, lng, full=true){
+      if(!id) return alert('ID bac manquant');
+      const bin = state.bins[id] || { id, lat:Number(lat), lng:Number(lng), full:!!full, updatedAt:Date.now(), photos:[] };
+      bin.lat = Number(lat); bin.lng = Number(lng);
+      if(Number.isNaN(bin.lat)||Number.isNaN(bin.lng)) return alert('Coordonnées invalides');
+      bin.full = !!full; bin.updatedAt = Date.now();
+      state.bins[id] = bin;
+      if(full && !state.queue.includes(id)) state.queue.push(id);
+      drawOrUpdateBinMarker(bin); saveState(); renderQueue();
+    }
+    function markBinEmpty(id){
+      const bin = state.bins[id]; if(!bin) return;
+      bin.full = false; bin.updatedAt = Date.now();
+      state.queue = state.queue.filter(x => x !== id);
+      drawOrUpdateBinMarker(bin); saveState(); renderQueue();
+    }
+    function selectBin(id){ const b = state.bins[id]; if(!b) return; map.setView([b.lat,b.lng],17); showPhotos('bin', id); }
+    function focusBlack(id){ const sp = state.blackSpots.find(s=>s.id===id); if(sp) map.setView([sp.lat,sp.lng],17); showPhotos('black', id); }
+
+    // Black spots
+    function addBlackSpot(lat, lng, note=''){
+      const id = 'PN-' + Math.random().toString(36).slice(2,8).toUpperCase();
+      const sp = { id, lat:Number(lat), lng:Number(lng), note, open:true, createdAt:Date.now(), photos:[] };
+      state.blackSpots.push(sp);
+      drawOrUpdateBlackMarker(sp); saveState(); renderBlackSpots(); map.setView([sp.lat, sp.lng], 17);
+    }
+    function toggleBlackSpot(id){
+      const sp = state.blackSpots.find(s=>s.id===id); if(!sp) return;
+      sp.open = !sp.open; saveState(); renderBlackSpots(); drawOrUpdateBlackMarker(sp);
+    }
+
+    // Route (voisin le plus proche)
+    const rad = d => d*Math.PI/180;
+    function haversine(a,b){
+      const R=6371, dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng);
+      const la1=rad(a.lat), la2=rad(b.lat);
+      const x = Math.sin(dLat/2)**2 + Math.sin(dLng/2)**2 * Math.cos(la1)*Math.cos(la2);
+      return 2*R*Math.asin(Math.sqrt(x));
+    }
+    function computeRoute(){
+      const start = state.user.lat && state.user.lng ? {lat:state.user.lat,lng:state.user.lng} : DEFAULT_CENTER;
+      const items = [];
+      for(const id of state.queue){ const b=state.bins[id]; if(b) items.push({ type:'bin', id:b.id, lat:b.lat, lng:b.lng }); }
+      for(const s of state.blackSpots.filter(s=>s.open)){ items.push({ type:'black', id:s.id, lat:s.lat, lng:s.lng }); }
+      if(items.length===0){ alert('Rien à traiter'); return; }
+      const order=[]; let current=start; const remaining=items.slice(); let total=0;
+      while(remaining.length){
+        let best=0, bestD=Infinity;
+        for(let i=0;i<remaining.length;i++){ const d=haversine(current, remaining[i]); if(d<bestD){bestD=d;best=i;}}
+        const next=remaining.splice(best,1)[0]; order.push(next); total+=bestD; current=next;
+      }
+      state.route = { order, totalKm:Number(total.toFixed(2)) };
+      drawRoute(start, order); saveState();
+    }
+    function drawRoute(start, order){
+      if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+      const pts = [[start.lat,start.lng], ...order.map(o=>[o.lat,o.lng])];
+      routeLine = L.polyline(pts, { color:'#10b981', weight:5, opacity:.9 }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding:[40,40] });
+      els.btnOpenGMaps.disabled=false; els.btnOpenGMaps.classList.remove('opacity-50');
+      updateStats();
+    }
+    function clearRoute(){ if(routeLine){ map.removeLayer(routeLine); routeLine=null; } state.route=null; saveState(); updateStats(); }
+    function buildGoogleMapsURL(){
+      const start = state.user.lat && state.user.lng ? `${state.user.lat},${state.user.lng}` : `${DEFAULT_CENTER.lat},${DEFAULT_CENTER.lng}`;
+      const points = (state.route?.order||[]).map(o=>`${o.lat},${o.lng}`);
+      const dest = points.at(-1) || start; const waypoints = points.slice(0,-1).join('|');
+      const url = new URL('https://www.google.com/maps/dir/'); url.searchParams.set('api','1');
+      url.searchParams.set('origin', start); url.searchParams.set('destination', dest);
+      if(waypoints) url.searchParams.set('waypoints', waypoints); return url.toString();
+    }
+
+    // UI lists
+    function renderQueue(){
+      const ul = els.queueList; ul.innerHTML='';
+      for(const id of state.queue){
+        const b = state.bins[id]; if(!b) continue;
+        const li = document.createElement('li'); li.className='flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2';
+        li.innerHTML = `<div class="text-sm">🗑️ <b>${b.id}</b> · <span class="text-slate-500">${b.lat.toFixed(5)}, ${b.lng.toFixed(5)}</span></div>`;
+        const btns = document.createElement('div'); btns.className='flex gap-2';
+        const bGoto = document.createElement('button'); bGoto.textContent='Voir'; bGoto.className='px-2 py-1 text-xs bg-slate-200 rounded-lg'; bGoto.onclick=()=>selectBin(b.id);
+        const bDone = document.createElement('button'); bDone.textContent='Libéré'; bDone.className='px-2 py-1 text-xs bg-emerald-600 text-white rounded-lg'; bDone.onclick=()=>markBinEmpty(b.id);
+        const bPhoto = document.createElement('button'); bPhoto.textContent='Photo'; bPhoto.className='px-2 py-1 text-xs bg-amber-500 text-white rounded-lg'; bPhoto.onclick=()=>capturePhotoFor('bin', b.id);
+        btns.append(bGoto,bDone,bPhoto); li.append(btns); ul.append(li);
+      }
+      updateStats();
+    }
+    function renderBlackSpots(){
+      const ul = $('#blackSpotList'); ul.innerHTML='';
+      for(const sp of state.blackSpots){
+        const li = document.createElement('li'); li.className='flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2';
+        li.innerHTML = `<div class="text-sm">⚠️ <b>${sp.note||sp.id}</b> · <span class="text-slate-500">${sp.lat.toFixed(5)}, ${sp.lng.toFixed(5)}</span></div>`;
+        const btns = document.createElement('div'); btns.className='flex gap-2';
+        const bToggle = document.createElement('button'); bToggle.textContent = sp.open?'Ouvert':'Fermé'; bToggle.className = `px-2 py-1 text-xs rounded-lg ${sp.open?'bg-rose-600 text-white':'bg-slate-200'}`; bToggle.onclick=()=>{toggleBlackSpot(sp.id);};
+        const bFocus = document.createElement('button'); bFocus.textContent='Voir'; bFocus.className='px-2 py-1 text-xs bg-slate-200 rounded-lg'; bFocus.onclick=()=>focusBlack(sp.id);
+        const bPhoto = document.createElement('button'); bPhoto.textContent='Photo'; bPhoto.className='px-2 py-1 text-xs bg-amber-500 text-white rounded-lg'; bPhoto.onclick=()=>capturePhotoFor('black', sp.id);
+        btns.append(bToggle,bFocus,bPhoto); li.append(btns); ul.append(li);
+      }
+    }
+    function updateStats(){
+      $('#taskStats').textContent = `${state.queue.length + state.blackSpots.filter(s=>s.open).length} à traiter`;
+      if(state.route){ els.btnOpenGMaps.disabled=false; els.btnOpenGMaps.classList.remove('opacity-50'); }
+      else { els.btnOpenGMaps.disabled=true; els.btnOpenGMaps.classList.add('opacity-50'); }
+    }
+    function renderAll(){ renderQueue(); renderBlackSpots(); updateStats(); refreshPhotoGrid(); }
+
+    // === PHOTOS ===
+    let currentPhotoTarget = null; // { type:'bin'|'black'|'poi', id:string }
+    function capturePhotoFor(type, id){
+      currentPhotoTarget = { type, id };
+      els.photoInput.value='';
+      els.photoInput.click();
+    }
+    async function compressImage(file, maxW=1280, quality=0.8){
+      const img = new Image();
+      const dataURL = await new Promise((res,rej)=>{
+        const r = new FileReader(); r.onload=()=>res(String(r.result)); r.onerror=()=>rej(r.error); r.readAsDataURL(file);
+      });
+      img.src = dataURL;
+      await new Promise((res)=>{ img.onload=res; });
+      const scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+      const blob = await new Promise((res)=>canvas.toBlob(res, 'image/jpeg', quality));
+      return blob;
+    }
+    async function onPhotoSelected(file){
+      if(!currentPhotoTarget) return;
+      const blob = await compressImage(file, 1280, 0.8);
+      const id = await DB.putPhoto({ blob, type:currentPhotoTarget.type, refId:currentPhotoTarget.id });
+      // rattacher l'ID au bon objet (juste une référence pour affichage rapide)
+      if(currentPhotoTarget.type==='bin'){
+        const b = state.bins[currentPhotoTarget.id]; b.photos = b.photos||[]; b.photos.push(id);
+      } else {
+        const sp = state.blackSpots.find(s=>s.id===currentPhotoTarget.id); if(sp){ sp.photos=sp.photos||[]; sp.photos.push(id); }
+      }
+      saveState(); refreshPhotoGrid(currentPhotoTarget.type, currentPhotoTarget.id);
+      currentPhotoTarget = null;
+    }
+    async function showPhotos(type, id){ refreshPhotoGrid(type, id); }
+    async function refreshPhotoGrid(type=null, id=null){
+      els.photoGrid.innerHTML = '';
+      const photos = type && id ? await DB.listPhotosByRef(type, id) : await DB.listAllPhotos(60);
+      for(const p of photos){
+        const url = URL.createObjectURL(p.blob);
+        const card = document.createElement('div'); card.className='relative';
+        const img = document.createElement('img'); img.src=url; img.className='w-full h-24 object-cover rounded-lg border'; img.title = `${p.type}:${p.refId}`;
+        const del = document.createElement('button'); del.textContent='×'; del.className='absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 text-sm'; del.onclick=async()=>{ await DB.deletePhoto(p.id); refreshPhotoGrid(type,id); };
+        card.append(img, del); els.photoGrid.append(card);
+      }
+    }
+
+    // === Export/Import ===
+    async function exportAll(){
+      // rassemble tout l'état + photos (dataURL pour simplicité)
+      const exportObj = JSON.parse(JSON.stringify(state)); // copie superficielle
+      const allPhotos = await DB.listAllPhotos(10000);
+      exportObj.photos = [];
+      for(const p of allPhotos){
+        const dataURL = await DB.blobToDataURL(p.blob);
+        exportObj.photos.push({ id:p.id, type:p.type, refId:p.refId, note:p.note, createdAt:p.createdAt, dataURL });
+      }
+      const json = JSON.stringify(exportObj, null, 2);
+      const hasZip = window.JSZip && typeof JSZip==='function';
+      if(hasZip && json.length > 2_000_000){ // si trop gros, faire zip
+        const zip = new JSZip();
+        zip.file('data.json', JSON.stringify({ ...state, photosManifest: exportObj.photos.map(({id,type,refId,note,createdAt})=>({id,type,refId,note,createdAt})) }, null, 2));
+        const imgDir = zip.folder('photos');
+        for(const p of exportObj.photos){
+          const base = p.dataURL.split(',')[1]; // data:image/jpeg;base64,...
+          imgDir.file(`${p.id}.jpg`, base, { base64:true });
+        }
+        const blob = await zip.generateAsync({ type:'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href=url; a.download='sos-safi-export.zip'; a.click(); URL.revokeObjectURL(url);
+      } else {
+        const blob = new Blob([json], { type:'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href=url; a.download='sos-safi-data.json'; a.click(); URL.revokeObjectURL(url);
+      }
+    }
+    async function importJSON(file){
+      const text = await file.text();
+      const obj = JSON.parse(text);
+      // données principales
+      state.bins = obj.bins || state.bins;
+      state.queue = obj.queue || state.queue;
+      state.blackSpots = obj.blackSpots || state.blackSpots;
+      state.route = obj.route || null;
+      // photos (inline)
+      if(Array.isArray(obj.photos)){
+        for(const p of obj.photos){
+          const res = await fetch(p.dataURL); const blob = await res.blob();
+          await DB.putPhoto({ id:p.id, blob, type:p.type, refId:p.refId, note:p.note });
+        }
+      }
+      saveState(); // repaint
+      // Reset marqueurs et re-render
+      for(const m of binMarkers.values()) map.removeLayer(m); binMarkers.clear();
+      for(const m of blackMarkers.values()) map.removeLayer(m); blackMarkers.clear();
+      for(const id in state.bins) drawOrUpdateBinMarker(state.bins[id]);
+      for(const sp of state.blackSpots) drawOrUpdateBlackMarker(sp);
+      renderAll();
+      alert('Import réussi');
+    }
+
+    // === QR Scanner ===
+    let scanRAF=null, stream=null;
+    const video = $('#scannerVideo'), canvas=$('#scannerCanvas'), ctx=canvas.getContext('2d');
+    async function startScan(){
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } }, audio:false });
+        video.srcObject = stream; await video.play();
+        $('#btnStartScan').disabled=true; $('#btnStopScan').disabled=false; scanLoop();
+      } catch(err){ alert('Accès caméra refusé/indisponible'); }
+    }
+    function stopScan(){
+      if(stream){ for(const t of stream.getTracks()) t.stop(); stream=null; }
+      if(scanRAF) cancelAnimationFrame(scanRAF);
+      $('#btnStartScan').disabled=false; $('#btnStopScan').disabled=true;
+    }
+    function parseQRPayload(txt){
+      try{
+        if(txt.startsWith('SOSBIN:')){
+          const rest = txt.slice(7); const parts = rest.split(':');
+          const id = parts[0]; const [lat,lng] = (parts[1]||'').split(',').map(Number);
+          if(!id || Number.isNaN(lat) || Number.isNaN(lng)) throw new Error('QR invalide');
+          return { type:'bin', id, lat, lng };
+        }
+        const obj = JSON.parse(txt); if(obj && obj.type==='bin') return obj;
+      }catch(e){}
+      return null;
+    }
+    function scanLoop(){
+      if(!video.videoWidth){ scanRAF=requestAnimationFrame(scanLoop); return; }
+      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts:'attemptBoth' });
+      if(code && code.data){
+        stopScan();
+        const parsed = parseQRPayload(code.data);
+        if(!parsed){ alert('QR non reconnu'); return; }
+        addOrUpdateBin(parsed.id, parsed.lat, parsed.lng, true);
+        map.setView([parsed.lat, parsed.lng], 18);
+        alert(`Bac ${parsed.id} ajouté/mis à jour (plein) et placé en file.`);
+      } else { scanRAF = requestAnimationFrame(scanLoop); }
+    }
+
+    // === Events ===
+    $('#btnStartScan').addEventListener('click', startScan);
+    $('#btnStopScan').addEventListener('click', stopScan);
+    $('#btnAddBin').addEventListener('click', ()=>{
+      const id = els.inBinId.value.trim(); const lat = parseFloat(els.inLat.value), lng=parseFloat(els.inLng.value);
+      addOrUpdateBin(id, lat, lng, false);
+    });
+    $('#btnDeclareFull').addEventListener('click', ()=>{
+      const id = els.inBinId.value.trim(); const lat = parseFloat(els.inLat.value), lng=parseFloat(els.inLng.value);
+      addOrUpdateBin(id, lat, lng, true);
+    });
+    $('#btnPhotoBin').addEventListener('click', ()=>{
+      const id = els.inBinId.value.trim(); if(!id) return alert('ID bac manquant');
+      capturePhotoFor('bin', id);
+    });
+    $('#btnAddBlackSpotHere').addEventListener('click', ()=>{
+      const note = els.inBlackSpotNote.value.trim();
+      const lat = state.user.lat ?? DEFAULT_CENTER.lat;
+      const lng = state.user.lng ?? DEFAULT_CENTER.lng;
+      addBlackSpot(lat, lng, note);
+    });
+    $('#btnComputeRoute').addEventListener('click', ()=>{ getUserPosition(); setTimeout(computeRoute, 300); });
+    $('#btnClearRoute').addEventListener('click', clearRoute);
+    $('#btnCenterOnUser').addEventListener('click', ()=>{ getUserPosition(); if(state.user.lat) map.setView([state.user.lat,state.user.lng], 15); });
+    $('#btnOpenGMaps').addEventListener('click', ()=>{ if(!state.route){ alert('Aucun itinéraire'); return; } window.open(buildGoogleMapsURL(), '_blank'); });
+    $('#btnClearQueue').addEventListener('click', ()=>{ if(confirm('Vider la liste ?')){ state.queue=[]; saveState(); renderQueue(); }});
+    $('#btnExport').addEventListener('click', exportAll);
+    els.fileImport.addEventListener('change', (e)=>{ const f=e.target.files[0]; if(f) importJSON(f); e.target.value=''; });
+    $('#btnReset').addEventListener('click', ()=>{ if(confirm('Réinitialiser toutes les données locales ?')){ localStorage.removeItem(storageKey); location.reload(); }});
+    $('#btnAddPhotoHere').addEventListener('click', ()=>{
+      currentPhotoTarget = { type:'poi', id:'@here' };
+      els.photoInput.value=''; els.photoInput.click();
+    });
+    els.photoInput.addEventListener('change', (e)=>{ const f=e.target.files[0]; if(f) onPhotoSelected(f); });
+
+    // Boot
+    $('#year').textContent = new Date().getFullYear();
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
+    await DB.openDB();
+    loadState();
+    initMap();
+    getUserPosition();
+
+    // seed de démonstration si vide
+    if(Object.keys(state.bins).length===0 && state.blackSpots.length===0){
+      addOrUpdateBin('AF-101', 32.299, -9.236, false);
+      addOrUpdateBin('AF-102', 32.304, -9.232, true);
+      addOrUpdateBin('AF-103', 32.295, -9.241, true);
+      addBlackSpot(32.300, -9.240, 'Dépôt sauvage');
+    }
+  </script>
+</body>
+</html>
