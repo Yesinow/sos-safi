@@ -1,0 +1,464 @@
+{
+  "_comment": "ملف الإعدادات — عدّل هنا بدون ما تمس الكود. الأوزان مجموعها يحدد نقطة البوز من 100.",
+  "runtime": {
+    "budgetSeconds": 420,
+    "fetchTimeoutMs": 12000,
+    "concurrency": 8,
+    "maxAgeHours": 24,
+    "topLimit": 12,
+    "enrichTop": 10,
+    "userAgent": "Mozilla/5.0 (compatible; BuzzMarocBot/1.0; +https://github.com/yesinow/sos-safi)"
+  },
+  "weights": {
+    "trend": 30,
+    "spread": 25,
+    "velocity": 18,
+    "emotion": 15,
+    "freshness": 12,
+    "pageFit": 10
+  },
+  "categoryBoost": {
+    "sport": 1.15,
+    "societe": 1.12,
+    "politique": 1.0,
+    "faits-divers": 1.1,
+    "culture": 0.95,
+    "economie": 0.9,
+    "monde": 0.85,
+    "general": 1.0
+  },
+  "repeatPenaltyHours": 48,
+  "trends": {
+    "geo": "MA",
+    "enabled": true
+  },
+  "facebook": {
+    "enabled": false,
+    "pageId": "",
+    "graphVersion": "v21.0",
+    "learnFromLastPosts": 50,
+    "publishMode": "draft"
+  },
+  "feeds": [
+    {
+      "name": "Hespress",
+      "url": "https://www.hespress.com/feed",
+      "cat": "general",
+      "trust": 1.0
+    },
+    {
+      "name": "Hespress Sport",
+      "url": "https://www.hespress.com/sport/feed",
+      "cat": "sport",
+      "trust": 1.0
+    },
+    {
+      "name": "Hespress Politique",
+      "url": "https://www.hespress.com/politique/feed",
+      "cat": "politique",
+      "trust": 1.0
+    },
+    {
+      "name": "Hespress Societe",
+      "url": "https://www.hespress.com/societe/feed",
+      "cat": "societe",
+      "trust": 1.0
+    },
+    {
+      "name": "Hespress Economie",
+      "url": "https://www.hespress.com/economie/feed",
+      "cat": "economie",
+      "trust": 0.9
+    },
+    {
+      "name": "Hespress Culture",
+      "url": "https://www.hespress.com/art-et-culture/feed",
+      "cat": "culture",
+      "trust": 0.9
+    },
+    {
+      "name": "Alyaoum24",
+      "url": "https://www.alyaoum24.com/feed",
+      "cat": "general",
+      "trust": 0.95
+    },
+    {
+      "name": "Al3omk",
+      "url": "https://www.al3omk.com/feed",
+      "cat": "general",
+      "trust": 0.9
+    },
+    {
+      "name": "Barlamane",
+      "url": "https://barlamane.com/feed",
+      "cat": "politique",
+      "trust": 0.9
+    },
+    {
+      "name": "Assahifa",
+      "url": "https://www.assahifa.com/feed",
+      "cat": "general",
+      "trust": 0.85
+    },
+    {
+      "name": "LeSiteInfo",
+      "url": "https://www.lesiteinfo.com/feed",
+      "cat": "general",
+      "trust": 0.85
+    },
+    {
+      "name": "Alayam24",
+      "url": "https://alayam24.com/feed",
+      "cat": "general",
+      "trust": 0.8
+    },
+    {
+      "name": "Kifache",
+      "url": "https://kifache.com/feed",
+      "cat": "faits-divers",
+      "trust": 0.8
+    },
+    {
+      "name": "ChoufTV",
+      "url": "https://www.chouftv.ma/feed",
+      "cat": "general",
+      "trust": 0.85,
+      "optional": true
+    },
+    {
+      "name": "SNRTNews",
+      "url": "https://snrtnews.com/rss.xml",
+      "cat": "general",
+      "trust": 0.9,
+      "optional": true
+    },
+    {
+      "name": "Medias24",
+      "url": "https://www.medias24.com/feed/",
+      "cat": "economie",
+      "trust": 0.9,
+      "optional": true
+    },
+    {
+      "name": "Hibapress",
+      "url": "https://www.hibapress.com/feed",
+      "cat": "general",
+      "trust": 0.75,
+      "optional": true
+    },
+    {
+      "name": "Rue20",
+      "url": "https://rue20.com/feed",
+      "cat": "general",
+      "trust": 0.75,
+      "optional": true
+    },
+    {
+      "name": "Febrayer",
+      "url": "https://www.febrayer.com/feed",
+      "cat": "general",
+      "trust": 0.75,
+      "optional": true
+    },
+    {
+      "name": "Goud",
+      "url": "https://www.goud.ma/feed",
+      "cat": "general",
+      "trust": 0.75,
+      "optional": true
+    }
+  ],
+  "googleNews": {
+    "enabled": true,
+    "hl": "ar",
+    "gl": "MA",
+    "ceid": "MA:ar",
+    "geoSection": "",
+    "queries": [
+      {
+        "q": "المغرب",
+        "cat": "general"
+      },
+      {
+        "q": "المنتخب المغربي OR الأسود الأطلس",
+        "cat": "sport"
+      },
+      {
+        "q": "الرجاء OR الوداد OR الجيش الملكي",
+        "cat": "sport"
+      },
+      {
+        "q": "الحكومة المغربية OR أخنوش OR البرلمان المغربي",
+        "cat": "politique"
+      },
+      {
+        "q": "احتجاج المغرب OR إضراب المغرب",
+        "cat": "societe"
+      },
+      {
+        "q": "أسعار المغرب OR غلاء المعيشة المغرب",
+        "cat": "societe"
+      },
+      {
+        "q": "حادث المغرب OR اعتقال المغرب",
+        "cat": "faits-divers"
+      },
+      {
+        "q": "فنان مغربي OR مهرجان المغرب",
+        "cat": "culture"
+      },
+      {
+        "q": "الصحراء المغربية",
+        "cat": "politique"
+      },
+      {
+        "q": "Maroc",
+        "cat": "general",
+        "hl": "fr",
+        "ceid": "MA:fr"
+      }
+    ]
+  },
+  "lexicon": {
+    "hot": {
+      "weight": 3,
+      "words": [
+        "عاجل",
+        "فيديو",
+        "صادم",
+        "مثير",
+        "فضيحة",
+        "يفجر",
+        "يكشف",
+        "مفاجأة",
+        "غضب",
+        "جدل",
+        "سخط",
+        "احتجاج",
+        "اعتقال",
+        "توقيف",
+        "وفاة",
+        "مصرع",
+        "حريق",
+        "فيضان",
+        "زلزال",
+        "انفجار",
+        "سرقة",
+        "تحرش",
+        "اغتصاب",
+        "اعتداء",
+        "استقالة",
+        "إقالة",
+        "محاكمة",
+        "سجن",
+        "رشوة",
+        "اختلاس",
+        "تسريب",
+        "هجوم",
+        "انتقادات",
+        "يرد على",
+        "يهاجم",
+        "بالفيديو",
+        "بالصور",
+        "شاهد",
+        "لأول مرة",
+        "حصري",
+        "خطير",
+        "كارثة",
+        "مأساة",
+        "غير مسبوق",
+        "scandale",
+        "choc",
+        "exclusif",
+        "urgent",
+        "polemique",
+        "colere"
+      ]
+    },
+    "warm": {
+      "weight": 1.6,
+      "words": [
+        "المنتخب",
+        "الركراكي",
+        "حكيمي",
+        "زياش",
+        "أمرابط",
+        "الرجاء",
+        "الوداد",
+        "كأس إفريقيا",
+        "كان",
+        "المونديال",
+        "هدف",
+        "فوز",
+        "هزيمة",
+        "إقصاء",
+        "تأهل",
+        "أسعار",
+        "الغلاء",
+        "المحروقات",
+        "التقاعد",
+        "التوظيف",
+        "الباك",
+        "التعليم",
+        "الصحة",
+        "المستشفى",
+        "الدرهم",
+        "الحد الأدنى",
+        "الدعم",
+        "السكن",
+        "الهجرة",
+        "البطالة",
+        "نجم",
+        "فنانة",
+        "مغني",
+        "مسلسل",
+        "فيلم",
+        "مهرجان",
+        "تيك توك",
+        "إنستغرام",
+        "يوتيوب"
+      ]
+    },
+    "cold": {
+      "weight": -1.5,
+      "words": [
+        "مذكرة",
+        "ندوة",
+        "اجتماع دوري",
+        "تقرير سنوي",
+        "مأدبة",
+        "افتتاح معرض",
+        "دورة تكوينية",
+        "مراسم",
+        "تهنئة",
+        "برقية",
+        "مجلس إداري",
+        "اتفاقية شراكة",
+        "seminaire",
+        "colloque",
+        "communique"
+      ]
+    }
+  },
+  "categoryKeywords": {
+    "sport": [
+      "المنتخب",
+      "كرة القدم",
+      "مباراة",
+      "الرجاء",
+      "الوداد",
+      "البطولة",
+      "حكيمي",
+      "الركراكي",
+      "كأس",
+      "هدف",
+      "اللاعب",
+      "المدرب",
+      "الدوري",
+      "تأهل",
+      "إقصاء",
+      "football",
+      "match",
+      "but"
+    ],
+    "politique": [
+      "الحكومة",
+      "البرلمان",
+      "وزير",
+      "حزب",
+      "انتخابات",
+      "الملك",
+      "مجلس النواب",
+      "الصحراء",
+      "دبلوماسية",
+      "مشروع قانون",
+      "أخنوش",
+      "سياسي"
+    ],
+    "economie": [
+      "الدرهم",
+      "الاستثمار",
+      "البورصة",
+      "التضخم",
+      "الميزانية",
+      "البنك",
+      "الصادرات",
+      "السياحة",
+      "التشغيل",
+      "أسعار",
+      "المحروقات"
+    ],
+    "societe": [
+      "التعليم",
+      "الصحة",
+      "المستشفى",
+      "احتجاج",
+      "إضراب",
+      "الأساتذة",
+      "الطلبة",
+      "التقاعد",
+      "السكن",
+      "الماء",
+      "الكهرباء",
+      "المواطنين",
+      "النساء",
+      "الشباب"
+    ],
+    "faits-divers": [
+      "اعتقال",
+      "توقيف",
+      "جريمة",
+      "سرقة",
+      "حادث",
+      "مصرع",
+      "حريق",
+      "مخدرات",
+      "محكمة",
+      "سجن",
+      "الدرك",
+      "الأمن",
+      "الشرطة"
+    ],
+    "culture": [
+      "فنان",
+      "فنانة",
+      "مهرجان",
+      "فيلم",
+      "مسلسل",
+      "أغنية",
+      "مسرح",
+      "كتاب",
+      "معرض",
+      "ثقافة",
+      "سينما",
+      "موسيقى"
+    ],
+    "monde": [
+      "غزة",
+      "فلسطين",
+      "فرنسا",
+      "إسبانيا",
+      "الجزائر",
+      "أمريكا",
+      "أوكرانيا",
+      "تركيا",
+      "مصر"
+    ]
+  },
+  "viralGate": {
+    "_comment": "الشروط اللي خاص الخبر يحققها كلها قبل ما يتصيفط ليك فواتساب",
+    "minScore": 60,
+    "minSources": 3,
+    "maxAgeHours": 12,
+    "requireImage": false,
+    "rejectRedirectLinks": true,
+    "maxPerRun": 5
+  },
+  "whatsapp": {
+    "_comment": "المزوّد: cloud (رسمي، موصى به) | twilio | ultramsg | callmebot. الأسرار من متغيرات البيئة فقط.",
+    "provider": "cloud",
+    "to": "",
+    "graphVersion": "v21.0",
+    "sendImage": true
+  }
+}

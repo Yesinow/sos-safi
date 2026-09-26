@@ -1,0 +1,88 @@
+# رادار البوز المغربي — يشتغل وحدو 24/24 وكيصيفط الأخبار المرشحة للفيرال فواتساب.
+#
+# ⚠️ الجدولة (schedule) كتخدم غير من الفرع الرئيسي (main). خاص هاد الملف يكون فmain.
+# ⚠️ الأسرار كلها كتزاد من: Settings ← Secrets and variables ← Actions ← New repository secret
+#    ماشي فهاد الملف — المستودع عمومي.
+
+name: بوت البوز → واتساب
+
+on:
+  schedule:
+    # كل 30 دقيقة. الدقائق 7 و37 (ماشي 0 و30) باش نتجنبو الزحام ديال رأس الساعة.
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'تجربة بلا إرسال'
+        type: boolean
+        default: false
+      gate_score:
+        description: 'عتبة البوز (فارغة = من config.json)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buzz-whatsapp
+  cancel-in-progress: false
+
+jobs:
+  buzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # السجل ديال لي تصيفط، باش ما يتعاودش نفس الخبر مرة أخرى
+      - name: استرجاع السجل
+        uses: actions/cache@v4
+        with:
+          path: bot/state
+          key: buzz-state-${{ github.run_id }}
+          restore-keys: buzz-state-
+
+      - name: تشغيل البوت
+        env:
+          WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
+          WA_TO: ${{ secrets.WA_TO }}
+          # Meta Cloud API
+          WA_PHONE_ID: ${{ secrets.WA_PHONE_ID }}
+          WA_TOKEN: ${{ secrets.WA_TOKEN }}
+          # Green API
+          GREENAPI_ID: ${{ secrets.GREENAPI_ID }}
+          GREENAPI_TOKEN: ${{ secrets.GREENAPI_TOKEN }}
+          GREENAPI_HOST: ${{ secrets.GREENAPI_HOST }}
+          # UltraMsg
+          ULTRAMSG_INSTANCE: ${{ secrets.ULTRAMSG_INSTANCE }}
+          ULTRAMSG_TOKEN: ${{ secrets.ULTRAMSG_TOKEN }}
+          # Twilio
+          TWILIO_SID: ${{ secrets.TWILIO_SID }}
+          TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+          # CallMeBot
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          # اختياري: التعلّم من أداء صفحتك فافيسبوك
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: |
+          cd bot
+          ARGS="--whatsapp --budget 420"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "${{ inputs.gate_score }}" ]; then ARGS="$ARGS --gate-score ${{ inputs.gate_score }}"; fi
+          node src/index.js $ARGS
+
+      - name: حفظ التقرير
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buzz-report
+          path: bot/out/buzz.*
+          retention-days: 7
+          if-no-files-found: ignore
