@@ -12,7 +12,7 @@ import { clusterArticles } from './cluster.js';
 import { scoreCluster } from './score.js';
 import { composePost, composeBrief } from './compose.js';
 import { learnPageProfile, publishPost, fbCredentials } from './facebook.js';
-import { waConfig, sendWhatsApp } from './whatsapp.js';
+import { resolveChannel, send as sendBrief, CHANNELS } from './channels.js';
 import { writeAll } from './report.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,8 +40,10 @@ const HELP = `
   --category X      تصفية: sport | politique | economie | societe | faits-divers | culture | monde
   --min-score N     تجاهل المواضيع تحت هذه النقطة
   --no-trends       بدون Google Trends (أسرع)
-  --whatsapp        صيفط الأخبار اللي دازت من بوابة البوز لواتساب ديالك
+  --send            صيفط الأخبار اللي دازت من بوابة البوز
+  --channel X       telegram (افتراضي) | ntfy | discord | whatsapp | console
   --dry-run         وريّ ليا شنو غادي يتصيفط، بلا ما تصيفطو فعلاً
+  --fresh H         أقصى عمر للخبر باش يدوز البوابة (بالساعات)
   --gate-score N    عتبة البوز ديال واتساب (افتراضي من config.json)
   --all             تجاوز بوابة البوز وصيفط أحسن النتائج على أي حال
   --publish [mode]  النشر على الصفحة: draft (افتراضي) | schedule | live
@@ -107,18 +109,24 @@ async function enrichImages(items, cfg, deadline, log) {
  */
 export function passesGate(item, gate, now = Date.now()) {
   const ageH = (now - item.publishedAt) / 3600000;
+  // Age de la couverture majoritaire, pas de l'article le plus ancien.
+  const storyAgeH = item.signals.medianAgeHours ?? ((now - (item.firstSeenAt ?? item.publishedAt)) / 3600000);
   const fails = [];
   if (item.score < gate.minScore) fails.push(`النقطة ${item.score} < ${gate.minScore}`);
   if (item.signals.sourceCount < gate.minSources) fails.push(`${item.signals.sourceCount} مصدر < ${gate.minSources}`);
-  if (ageH > gate.maxAgeHours) fails.push(`عمره ${Math.round(ageH)}س > ${gate.maxAgeHours}س`);
+  if (ageH > gate.maxAgeHours) fails.push(`آخر نشرة منذ ${Math.round(ageH)}س > ${gate.maxAgeHours}س`);
+  if (gate.maxStoryAgeHours && storyAgeH > gate.maxStoryAgeHours) {
+    fails.push(`أغلب التغطية عمرها ${Math.round(storyAgeH)}س > ${gate.maxStoryAgeHours}س`);
+  }
   if (gate.requireImage && !item.image) fails.push('بلا صورة');
   if (gate.rejectRedirectLinks && /news\.google\.com/.test(item.link || '')) fails.push('رابط Google News');
   return { pass: fails.length === 0, fails };
 }
 
-async function deliverWhatsApp({ cfg, args, payload, history, log, now }) {
+async function deliver({ cfg, args, payload, history, log, now }) {
   const gate = { ...cfg.viralGate };
   if (args['gate-score']) gate.minScore = Number(args['gate-score']);
+  if (args.fresh) { gate.maxAgeHours = Number(args.fresh); gate.maxStoryAgeHours = Number(args.fresh); }
 
   const alreadySent = new Set(history.filter((h) => h.sent).map((h) => h.link));
   const checked = payload.items.map((item) => ({ item, ...passesGate(item, gate, now) }));
@@ -130,51 +138,57 @@ async function deliverWhatsApp({ cfg, args, payload, history, log, now }) {
   selected = selected.filter((it) => !alreadySent.has(it.link)).slice(0, gate.maxPerRun);
 
   if (!selected.length) {
-    const best = checked[0];
-    log('ما كاين حتى خبر دار البوابة — ما تصيفط والو');
-    if (best) log(`أقرب واحد: «${best.item.title.slice(0, 50)}…» (${best.fails.join('، ')})`);
-    console.log('\n🔕 ما كاين حتى خبر مرشح للفيرال دابا. جرّب --all باش تشوف أحسن النتائج على أي حال.\n');
+    log(`ما كاين حتى خبر دار البوابة (نقطة ≥ ${gate.minScore} · ≤ ${gate.maxStoryAgeHours || gate.maxAgeHours}س)`);
+    const near = checked.slice(0, 3);
+    for (const c of near) log(`  ✗ «${c.item.title.slice(0, 42)}…» — ${c.fails.join('، ')}`);
+    console.log(`\n🔕 ما كاين حتى خبر مرشح للفيرال دابا (العتبة ${gate.minScore}/100).`);
+    console.log('   جرّب --all ولا --gate-score 70 باش تشوف شنو كاين.\n');
     return;
   }
 
-  const wa = waConfig(cfg);
   const dry = args.flags.has('dry-run');
+  if (args.channel) process.env.BUZZ_CHANNEL = String(args.channel);
+  if (args.whatsapp && !args.channel) process.env.BUZZ_CHANNEL = 'whatsapp';
+  const channel = dry ? { name: 'console', ready: true, format: 'plain', supportsImage: true } : resolveChannel(cfg);
 
-  if (!dry && !wa.ready) {
-    console.error(`\n❌ إعدادات واتساب ناقصة (${wa.provider}): ${wa.missing.join('، ')}`);
-    console.error('   شوف bot/README.md — قسم "ربط واتساب".\n');
+  if (channel.unknown) {
+    console.error(`\n❌ قناة غير معروفة: ${channel.name}. المتاح: ${Object.keys(CHANNELS).join('، ')}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!channel.ready) {
+    console.error(`\n❌ إعدادات القناة "${channel.name}" ناقصة: ${channel.missing.join('، ')}`);
+    console.error('   شوف bot/README.md — قسم "وين توصلك الأخبار".\n');
     process.exitCode = 1;
     return;
   }
 
-  log(`${selected.length} خبر دار البوابة${dry ? ' (تجربة بلا إرسال)' : ` — كنصيفط عبر ${wa.provider}`}`);
+  log(`${selected.length} خبر دار البوابة — ${dry ? 'تجربة بلا إرسال' : `كنصيفط عبر ${channel.name}`}`);
 
+  let sent = 0;
   for (const item of selected) {
     const text = composeBrief(
       { title: item.title, summary: item.summary, link: item.link, lastDate: item.publishedAt },
       { score: item.score, cat: item.category, why: item.why, signals: item.signals },
       item.post,
+      { format: channel.format },
     );
-    const imageUrl = cfg.whatsapp.sendImage ? item.image : '';
+    const imageUrl = cfg.delivery?.sendImage === false ? '' : item.image;
 
-    if (dry) {
-      console.log(`\n${'═'.repeat(54)}`);
-      console.log(text);
-      if (imageUrl) console.log(`\n🖼 ${imageUrl}`);
-      continue;
-    }
-
-    const res = await sendWhatsApp(wa, { text, imageUrl });
+    const res = await sendBrief(channel, { text, imageUrl, link: item.link });
     if (res.ok) {
-      log(`✅ تصيفط: «${item.title.slice(0, 46)}…»${res.withImage ? ' (بالصورة)' : ''}`);
-      history.push({ title: item.title, link: item.link, score: item.score, at: now, sent: true });
+      sent++;
+      if (!dry) {
+        log(`✅ تصيفط: «${item.title.slice(0, 44)}…»${res.withImage ? ' (بالصورة)' : ''}`);
+        history.push({ title: item.title, link: item.link, score: item.score, at: now, sent: true });
+      }
     } else {
       log(`❌ فشل الإرسال: ${res.error}`);
       process.exitCode = 1;
     }
   }
 
-  if (dry) console.log(`\n${'═'.repeat(54)}\n🧪 تجربة فقط — ما تصيفط والو.\n`);
+  if (dry) console.log(`\n${'═'.repeat(54)}\n🧪 تجربة فقط — ${sent} خبر كان غادي يتصيفط.\n`);
   else saveHistory(history);
 }
 
@@ -244,6 +258,7 @@ async function main() {
       summary: it.cluster.summary,
       sources: it.cluster.sources,
       publishedAt: it.cluster.lastDate,
+      firstSeenAt: it.cluster.firstDate,
       parts: it.parts,
       signals: it.signals,
       why: it.why,
@@ -257,8 +272,8 @@ async function main() {
   payload.stats.durationSeconds = Number(deadline.elapsedS);
 
   // 6. Porte virale + envoi WhatsApp
-  if (args.whatsapp || args.flags.has('dry-run')) {
-    await deliverWhatsApp({ cfg, args, payload, history, log, now });
+  if (args.send || args.whatsapp || args.channel || args.flags.has('dry-run')) {
+    await deliver({ cfg, args, payload, history, log, now });
   }
 
   // 7. Publication optionnelle sur la page

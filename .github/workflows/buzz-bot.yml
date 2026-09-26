@@ -4,7 +4,7 @@
 # ⚠️ الأسرار كلها كتزاد من: Settings ← Secrets and variables ← Actions ← New repository secret
 #    ماشي فهاد الملف — المستودع عمومي.
 
-name: بوت البوز → واتساب
+name: بوت البوز المغربي
 
 on:
   schedule:
@@ -50,6 +50,18 @@ jobs:
 
       - name: تشغيل البوت
         env:
+          # القناة: telegram (افتراضية) | ntfy | discord | whatsapp
+          BUZZ_CHANNEL: ${{ secrets.BUZZ_CHANNEL }}
+          # Telegram
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # ntfy
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          # Discord
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          # WhatsApp (اختياري)
           WA_PROVIDER: ${{ secrets.WA_PROVIDER }}
           WA_TO: ${{ secrets.WA_TO }}
           # Meta Cloud API
@@ -73,7 +85,7 @@ jobs:
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
         run: |
           cd bot
-          ARGS="--whatsapp --budget 420"
+          ARGS="--send --budget 420"
           if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
           if [ -n "${{ inputs.gate_score }}" ]; then ARGS="$ARGS --gate-score ${{ inputs.gate_score }}"; fi
           node src/index.js $ARGS

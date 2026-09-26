@@ -7,15 +7,16 @@
     "maxAgeHours": 24,
     "topLimit": 12,
     "enrichTop": 10,
-    "userAgent": "Mozilla/5.0 (compatible; BuzzMarocBot/1.0; +https://github.com/yesinow/sos-safi)"
+    "userAgent": "Mozilla/5.0 (compatible; BuzzMarocBot/1.0; +https://github.com/yesinow/sos-safi)",
+    "freshnessHalfLifeHours": 3
   },
   "weights": {
-    "trend": 30,
-    "spread": 25,
-    "velocity": 18,
-    "emotion": 15,
-    "freshness": 12,
-    "pageFit": 10
+    "trend": 28,
+    "spread": 20,
+    "velocity": 20,
+    "emotion": 14,
+    "freshness": 20,
+    "pageFit": 8
   },
   "categoryBoost": {
     "sport": 1.15,
@@ -446,10 +447,11 @@
     ]
   },
   "viralGate": {
-    "_comment": "الشروط اللي خاص الخبر يحققها كلها قبل ما يتصيفط ليك فواتساب",
-    "minScore": 60,
+    "_comment": "الشروط اللي خاص الخبر يحققها كلها قبل ما يتصيفط ليك",
+    "minScore": 80,
     "minSources": 3,
-    "maxAgeHours": 12,
+    "maxAgeHours": 3,
+    "maxStoryAgeHours": 6,
     "requireImage": false,
     "rejectRedirectLinks": true,
     "maxPerRun": 5
@@ -460,5 +462,25 @@
     "to": "",
     "graphVersion": "v21.0",
     "sendImage": true
+  },
+  "delivery": {
+    "_comment": "القناة: telegram (موصى بها) | ntfy | discord | whatsapp | console",
+    "channel": "telegram",
+    "sendImage": true
+  },
+  "blocklist": {
+    "_comment": "عناوين ومصادر كتّحيد قبل التنقيط. زيد لي بغيتي.",
+    "titlePatterns": [
+      "yalla ?shoot",
+      "يلا ?شوت",
+      "koora ?live",
+      "كورة ?لايف",
+      "بث مباشر",
+      "مشاهدة مباراة",
+      "رابط مشاهدة",
+      "livehd",
+      "tv ?live"
+    ],
+    "sources": []
   }
 }

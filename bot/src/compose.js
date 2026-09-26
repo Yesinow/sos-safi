@@ -140,19 +140,31 @@ function ago(ts) {
  * Le gras WhatsApp s'ecrit *entre asterisques*. On reste sous 1024 caracteres
  * pour que le texte tienne en legende d'image.
  */
-export function composeBrief(cluster, scored, post = null) {
+/** Mise en gras selon la destination : WhatsApp *gras*, Telegram <b>gras</b>. */
+const FORMATS = {
+  whatsapp: { bold: (t) => `*${t}*`, esc: (t) => t },
+  html: {
+    bold: (t) => `<b>${t}</b>`,
+    esc: (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+  },
+  markdown: { bold: (t) => `**${t}**`, esc: (t) => String(t).replace(/([*_`~])/g, '\\$1') },
+  plain: { bold: (t) => t, esc: (t) => t },
+};
+
+export function composeBrief(cluster, scored, post = null, { format = 'whatsapp' } = {}) {
+  const fmt = FORMATS[format] || FORMATS.whatsapp;
   const emoji = CAT_EMOJI[scored.cat] || '📰';
   const label = CAT_LABEL[scored.cat] || scored.cat;
   const paragraph = trimSentence(cluster.summary || '', 300);
   const reasons = scored.why.slice(0, 2).join(' · ');
 
   const lines = [
-    `${emoji} *${label}* · نقطة البوز ${scored.score}/100`,
+    `${emoji} ${fmt.bold(label)} · نقطة البوز ${scored.score}/100`,
     '',
-    `*${cluster.title.trim()}*`,
+    fmt.bold(fmt.esc(cluster.title.trim())),
   ];
-  if (paragraph && paragraph.length > 40) lines.push('', paragraph);
-  lines.push('', `📊 ${reasons}`);
+  if (paragraph && paragraph.length > 40) lines.push('', fmt.esc(paragraph));
+  lines.push('', `📊 ${fmt.esc(reasons)}`);
   const sources = arPlural(scored.signals.sourceCount, { one: 'مصدر واحد', two: 'مصدران', few: 'مصادر', many: 'مصدرًا' });
   lines.push(`🕐 ${ago(cluster.lastDate)} · ${sources}`);
   if (post && post.angle && post.angle.note) lines.push(`💡 ${post.angle.note}`);

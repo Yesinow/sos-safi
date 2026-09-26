@@ -107,12 +107,19 @@ export function scoreCluster(cluster, ctx) {
   const lex = lexiconScore(`${cluster.title} ${cluster.summary}`, cfg.lexicon);
   const emotion = Math.max(0, Math.tanh(lex.raw / 5));
 
-  // 5. Fraicheur (demi-vie 5h)
+  // 5. Fraicheur : demi-vie reglable (courte = on privilegie le tout frais)
+  const halfLife = cfg.runtime.freshnessHalfLifeHours || 5;
   const ageH = Math.max(0, (now - cluster.lastDate) / HOUR);
-  const freshness = Math.pow(0.5, ageH / 5);
+  const freshness = Math.pow(0.5, ageH / halfLife);
 
   // 6. Affinite avec ta page
   const fit = pageFitScore(cluster, pageProfile);
+
+  // Age median des articles du cluster : un sujet dont 40 articles sur 43 sont
+  // parus dans les deux dernieres heures est « en train de sortir », meme si un
+  // article annexe date d'hier. C'est plus juste que la premiere parution.
+  const ages = cluster.members.map((m) => (now - m.date) / HOUR).sort((a, b) => a - b);
+  const medianAgeH = ages.length ? ages[Math.floor(ages.length / 2)] : ageH;
 
   const parts = {
     trend: trend.score * W.trend,
@@ -152,6 +159,7 @@ export function scoreCluster(cluster, ctx) {
       sourceCount: cluster.sourceCount,
       articlesPerHour: Math.round(perHour * 10) / 10,
       ageHours: Math.round(ageH * 10) / 10,
+      medianAgeHours: Math.round(medianAgeH * 10) / 10,
       hotWords: lex.hits.filter((h) => h.band !== 'cold').map((h) => h.word).slice(0, 6),
       coldWords: lex.hits.filter((h) => h.band === 'cold').map((h) => h.word).slice(0, 3),
       pageTerms: fit.matched,

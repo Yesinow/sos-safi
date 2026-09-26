@@ -27,6 +27,20 @@ function splitGoogleTitle(title) {
   return { title: text, source };
 }
 
+/** Titres de sites de streaming pirate et medias exclus : ecartes des l'ingestion. */
+function makeBlocker(cfg) {
+  const bl = cfg.blocklist || {};
+  const patterns = (bl.titlePatterns || []).map((p) => {
+    try { return new RegExp(p, 'i'); } catch { return null; }
+  }).filter(Boolean);
+  const sources = new Set((bl.sources || []).map((x) => String(x).toLowerCase().trim()));
+
+  return (title, source) => {
+    if (sources.size && source && sources.has(String(source).toLowerCase().trim())) return true;
+    return patterns.some((re) => re.test(title));
+  };
+}
+
 function cleanUrl(u = '') {
   try {
     const url = new URL(u);
@@ -64,8 +78,9 @@ export async function collectArticles(cfg, deadline, log) {
 
   const maxAgeMs = rt.maxAgeHours * 3600 * 1000;
   const now = Date.now();
+  const isBlocked = makeBlocker(cfg);
   const articles = [];
-  const diag = { ok: 0, failed: [], totalRaw: 0 };
+  const diag = { ok: 0, failed: [], totalRaw: 0, blocked: 0 };
 
   await pool(targets, rt.concurrency, async (t) => {
     const res = await getText(t.url, { timeoutMs: rt.fetchTimeoutMs, userAgent: rt.userAgent, deadline });
@@ -86,6 +101,7 @@ export async function collectArticles(cfg, deadline, log) {
       if (now - date > maxAgeMs) continue;
       if (date > now + 6 * 3600 * 1000) continue; // date manifestement fausse
       const split = t.kind === 'gnews' ? splitGoogleTitle(it.title) : { title: it.title, source: null };
+      if (isBlocked(split.title, split.source || t.name)) { diag.blocked++; continue; }
       articles.push({
         title: split.title,
         link: cleanUrl(it.link),
@@ -102,7 +118,8 @@ export async function collectArticles(cfg, deadline, log) {
     }
   });
 
-  log(`المصادر: ${diag.ok}/${targets.length} نجحت · ${articles.length} خبر ضمن آخر ${rt.maxAgeHours} ساعة`);
+  log(`المصادر: ${diag.ok}/${targets.length} نجحت · ${articles.length} خبر ضمن آخر ${rt.maxAgeHours} ساعة`
+    + (diag.blocked ? ` · ${diag.blocked} تحيّدو (سبام/محجوب)` : ''));
   const blocking = diag.failed.filter((f) => !f.optional);
   if (blocking.length) log(`تعذّر الوصول: ${blocking.map((f) => `${f.name} (${f.error})`).join(' · ')}`);
   return { articles, diag };
