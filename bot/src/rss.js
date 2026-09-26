@@ -14,7 +14,12 @@ function safeChar(code) {
 }
 
 export function stripTags(s = '') {
-  return decodeEntities(String(s).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  // L'ordre compte : on ouvre d'abord les CDATA (sinon `<![CDATA[...]]>` est
+  // vu comme une balise et tout le contenu disparait), puis on retire les
+  // vraies balises, puis on decode les entites — decoder avant transformerait
+  // un `&lt;b&gt;` litteral en balise a supprimer.
+  const unwrapped = String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  return decodeEntities(unwrapped.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
 /** Contenu du premier <tag>…</tag> (namespace toléré). */

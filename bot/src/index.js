@@ -319,7 +319,16 @@ async function main() {
   console.log(`📝 ${files.md}\n`);
 }
 
-main().catch((e) => {
-  console.error('\n❌ خطأ غير متوقع:', e && e.stack || e);
-  process.exitCode = 1;
-});
+// Ne demarre que lorsqu'on execute ce fichier : les tests peuvent ainsi
+// importer passesGate sans declencher une collecte reseau.
+const invokedDirectly = process.argv[1]
+  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error('\n❌ خطأ غير متوقع:', e && e.stack || e);
+    process.exitCode = 1;
+  });
+}
+
+export { main };
