@@ -1,0 +1,22 @@
+{
+  "name": "buzz-maroc-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Bot de veille buzz Maroc — collecte, score et redaction de posts Facebook",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "fast": "node src/index.js --budget 240 --limit 8",
+    "sport": "node src/index.js --category sport",
+    "publish": "node src/index.js --publish",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && npm test"
+  },
+  "bin": {
+    "buzz": "src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
