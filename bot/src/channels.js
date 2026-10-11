@@ -39,6 +39,18 @@ export function resolveChannel(cfg = {}) {
     return { name, ready: wa.ready, missing: wa.missing, format: 'whatsapp', supportsImage: wa.supportsImage, wa };
   }
 
+  // ntfy est le seul canal qui marche sans secret : un nom de sujet n'ouvre
+  // aucun compte, il peut donc vivre dans config.json. C'est la voie « zero
+  // reglage » pour qui ne veut pas toucher aux secrets GitHub.
+  if (name === 'ntfy') {
+    const topic = env('NTFY_TOPIC') || (cfg.delivery?.ntfyTopic || '').trim();
+    const server = env('NTFY_SERVER') || cfg.delivery?.ntfyServer || 'https://ntfy.sh';
+    return {
+      name, topic, server, format: spec.format, supportsImage: spec.image,
+      ready: Boolean(topic), missing: topic ? [] : ['NTFY_TOPIC (ولا delivery.ntfyTopic فـconfig.json)'],
+    };
+  }
+
   const missing = spec.vars.filter((v) => !env(v));
   return { name, ready: missing.length === 0, missing, format: spec.format, supportsImage: spec.image };
 }
@@ -77,8 +89,8 @@ export async function send(channel, { text, imageUrl, link }) {
     case 'ntfy': {
       // Publication en JSON (et non par en-tetes) : les en-tetes HTTP ne
       // transportent pas l'arabe, le corps JSON si.
-      const server = env('NTFY_SERVER') || 'https://ntfy.sh';
-      const payload = { topic: env('NTFY_TOPIC'), message: text, markdown: false };
+      const server = channel.server || env('NTFY_SERVER') || 'https://ntfy.sh';
+      const payload = { topic: channel.topic || env('NTFY_TOPIC'), message: text, markdown: false };
       if (link) payload.click = link;
       if (useImage) payload.attach = imageUrl;
       const headers = {};

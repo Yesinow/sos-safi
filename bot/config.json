@@ -511,8 +511,10 @@
     "sendImage": true
   },
   "delivery": {
-    "_comment": "القناة: telegram (موصى بها) | ntfy | discord | whatsapp | console",
-    "channel": "telegram",
+    "_comment": "القناة: ntfy (بلا أي حساب ولا كلمة سر) | telegram | discord | whatsapp | console. باش تبدل لتيليگرام: زيد TELEGRAM_TOKEN وTELEGRAM_CHAT_ID وحط BUZZ_CHANNEL=telegram.",
+    "channel": "ntfy",
+    "ntfyTopic": "buzz-maroc-1b6bcbcf00",
+    "_ntfyComment": "اسم الموضوع ماشي سر — ولكن اللي عرفو يقدر يصيفط ليك إشعارات. بدّلو منين بغيتي، غير خاصك تعاود الاشتراك فالتطبيق.",
     "sendImage": true
   },
   "blocklist": {
