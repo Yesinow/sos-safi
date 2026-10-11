@@ -139,7 +139,8 @@ npm test          # 31 اختبار، بلا شبكة، ف~0.2 ثانية
 3. صيفط أي رسالة للبوت ديالك، من بعد حل:
    `https://api.telegram.org/bot<التوكن>/getUpdates`
    وخود `chat.id` — هادا هو `TELEGRAM_CHAT_ID`.
-4. الأسرار: `TELEGRAM_TOKEN` و`TELEGRAM_CHAT_ID` و`BUZZ_CHANNEL=telegram`.
+4. زيد غير جوج أسرار: `TELEGRAM_TOKEN` و`TELEGRAM_CHAT_ID`.
+   البوت كيبدّل لتيليگرام **بوحدو** ملي يلقاهم — ما عندكش ما تزيد `BUZZ_CHANNEL`.
 
 ```bash
 TELEGRAM_TOKEN=... TELEGRAM_CHAT_ID=... node src/index.js --send --channel telegram

@@ -28,9 +28,19 @@ export const CHANNELS = {
   console:  { vars: [], format: 'plain', image: true },
 };
 
-/** Determine le canal actif et verifie que ses variables sont presentes. */
+/**
+ * Determine le canal actif et verifie que ses variables sont presentes.
+ *
+ * Ordre : BUZZ_CHANNEL explicite, puis Telegram des que ses deux secrets
+ * existent, puis config.json. Poser les secrets suffit donc a basculer sur
+ * Telegram — pas de troisieme reglage a ne pas oublier.
+ */
 export function resolveChannel(cfg = {}) {
-  const name = (env('BUZZ_CHANNEL') || cfg.delivery?.channel || 'telegram').toLowerCase();
+  const telegramReady = Boolean(env('TELEGRAM_TOKEN') && env('TELEGRAM_CHAT_ID'));
+  const name = (env('BUZZ_CHANNEL')
+    || (telegramReady ? 'telegram' : '')
+    || cfg.delivery?.channel
+    || 'telegram').toLowerCase();
   const spec = CHANNELS[name];
   if (!spec) return { name, ready: false, unknown: true, missing: [], format: 'plain' };
 
