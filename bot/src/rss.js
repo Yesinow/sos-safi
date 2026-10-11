@@ -18,14 +18,17 @@ export function stripTags(s = '') {
   // vu comme une balise et tout le contenu disparait), puis on retire les
   // vraies balises, puis on decode les entites — decoder avant transformerait
   // un `&lt;b&gt;` litteral en balise a supprimer.
-  const unwrapped = String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-  const decoded = decodeEntities(unwrapped.replace(/<[^>]*>/g, ' '));
-  // Google News encode son resume en HTML echappe : apres decodage un
-  // `<a href="...">` reapparait en clair et finissait dans le brief envoye.
-  // On ne repasse que si une balise plausible subsiste, pour ne pas manger
-  // un `<b>` ecrit litteralement dans un texte.
-  const cleaned = /<\/?[a-zA-Z][^>]*>/.test(decoded) ? decoded.replace(/<[^>]*>/g, ' ') : decoded;
-  return cleaned.replace(/\s+/g, ' ').trim();
+  let text = String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  // Google News encode son resume en HTML echappe : apres decodage, un
+  // `<a href="...">` et des `&nbsp;` reapparaissent en clair et finissaient
+  // dans le brief envoye. On repasse donc, mais seulement tant qu'une balise
+  // plausible ou une entite subsiste — « 5 &lt; 7 » s'arrete des le premier
+  // tour et garde son chevron.
+  for (let pass = 0; pass < 2; pass++) {
+    text = decodeEntities(text.replace(/<[^>]*>/g, ' '));
+    if (!/<\/?[a-zA-Z][^>]*>|&(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);/.test(text)) break;
+  }
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** Contenu du premier <tag>…</tag> (namespace toléré). */
