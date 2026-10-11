@@ -19,7 +19,13 @@ export function stripTags(s = '') {
   // vraies balises, puis on decode les entites — decoder avant transformerait
   // un `&lt;b&gt;` litteral en balise a supprimer.
   const unwrapped = String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-  return decodeEntities(unwrapped.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  const decoded = decodeEntities(unwrapped.replace(/<[^>]*>/g, ' '));
+  // Google News encode son resume en HTML echappe : apres decodage un
+  // `<a href="...">` reapparait en clair et finissait dans le brief envoye.
+  // On ne repasse que si une balise plausible subsiste, pour ne pas manger
+  // un `<b>` ecrit litteralement dans un texte.
+  const cleaned = /<\/?[a-zA-Z][^>]*>/.test(decoded) ? decoded.replace(/<[^>]*>/g, ' ') : decoded;
+  return cleaned.replace(/\s+/g, ' ').trim();
 }
 
 /** Contenu du premier <tag>…</tag> (namespace toléré). */

@@ -307,6 +307,13 @@ test('le canal par defaut de la config existe', () => {
   assert.ok(CHANNELS[cfg.delivery.channel], `canal inconnu : ${cfg.delivery.channel}`);
 });
 
+test('stripTags nettoie le HTML double-encode de Google News', () => {
+  // Google News echappe son resume : apres decodage le `<a href>` reapparait.
+  assert.equal(stripTags('&lt;a href="https://x.ma"&gt;خبر مهم&lt;/a&gt; وتفاصيل'), 'خبر مهم وتفاصيل');
+  // Mais une comparaison litterale ne doit pas etre mangee.
+  assert.equal(stripTags('قال 5 &lt; 7 و 9 &gt; 2'), 'قال 5 < 7 و 9 > 2');
+});
+
 // ── liste de surveillance (priorite absolue) ──────────────────────────────
 const watchCfg = {
   watchlist: [{
