@@ -41,6 +41,15 @@ export function renderMarkdown(p) {
   p.items.forEach((it, i) => {
     lines.push(`### ${i + 1}. [${it.score}/100] ${it.title}`);
     lines.push(``);
+    if (it.watch) {
+      lines.push(`> ${it.watch.label} — **${it.watch.confirmed ? 'مؤكد' : 'مشاورات'}**`
+        + ` (${it.watch.keywords.slice(0, 3).join('، ')})`, ``);
+      if (it.ministers?.length) {
+        lines.push(`| المنصب | الاسم |`, `| --- | --- |`);
+        it.ministers.forEach((m) => lines.push(`| ${m.portfolio} | **${m.name}** |`));
+        lines.push(``);
+      }
+    }
     lines.push(`\`${it.category}\` · ${it.signals.sourceCount} مصدر · منذ ${it.signals.ageHours} ساعة · [الرابط](${it.link})`);
     lines.push(``);
     it.why.forEach((w) => lines.push(`- ${w}`));
@@ -66,7 +75,10 @@ export function renderHtml(p) {
         </div>
         <span class="cat">${esc(it.category)}</span>
       </header>
+      ${it.watch ? `<p class="watch">${esc(it.watch.label)} — ${it.watch.confirmed ? 'مؤكد' : 'مشاورات'}</p>` : ''}
       <h2><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></h2>
+      ${it.ministers?.length ? `<ul class="ministers">${it.ministers
+        .map((m) => `<li><span>${esc(m.portfolio)}</span><b>${esc(m.name)}</b></li>`).join('')}</ul>` : ''}
       <ul class="why">${it.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>
       <p class="angle">💡 ${esc(it.post.angle.note)}</p>
       <div class="postbox">
@@ -125,6 +137,11 @@ export function renderHtml(p) {
   .card h2 a:hover{text-decoration:underline}
   ul.why{margin:0 0 10px;padding:0 18px 0 0;color:var(--muted);font-size:.88rem}
   .angle{margin:0 0 12px;font-size:.9rem;color:var(--hot)}
+  .watch{margin:0 0 6px;font-weight:700;color:var(--accent);font-size:.92rem}
+  .ministers{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:4px}
+  .ministers li{display:flex;justify-content:space-between;gap:10px;font-size:.9rem;
+    border-bottom:1px dashed var(--line);padding-bottom:3px}
+  .ministers span{color:var(--muted)}
   .postbox pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 10px;font:inherit}
   .actions{display:flex;gap:8px;flex-wrap:wrap}
   button,.btn{font:inherit;font-size:.86rem;padding:7px 14px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;text-decoration:none}

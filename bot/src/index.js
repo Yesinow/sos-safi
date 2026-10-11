@@ -11,6 +11,7 @@ import { collectArticles, collectTrends } from './collect.js';
 import { clusterArticles } from './cluster.js';
 import { scoreCluster } from './score.js';
 import { composePost, composeBrief } from './compose.js';
+import { applyWatchlist, harvestMinisters } from './watch.js';
 import { learnPageProfile, publishPost, fbCredentials } from './facebook.js';
 import { resolveChannel, send as sendBrief, CHANNELS } from './channels.js';
 import { writeAll } from './report.js';
@@ -129,13 +130,22 @@ async function deliver({ cfg, args, payload, history, log, now }) {
   if (args.fresh) { gate.maxAgeHours = Number(args.fresh); gate.maxStoryAgeHours = Number(args.fresh); }
 
   const alreadySent = new Set(history.filter((h) => h.sent).map((h) => h.link));
-  const checked = payload.items.map((item) => ({ item, ...passesGate(item, gate, now) }));
+  // Un sujet de la liste de surveillance saute la porte : c'est tout l'interet
+  // de la liste. Le reste doit franchir tous les seuils.
+  const bypass = (item) => Boolean(item.watch && item.watch.bypassGate);
+  const checked = payload.items.map((item) => ({
+    item,
+    ...(bypass(item) ? { pass: true, fails: [] } : passesGate(item, gate, now)),
+  }));
 
   let selected = args.flags.has('all')
     ? checked.map((c) => c.item)
     : checked.filter((c) => c.pass).map((c) => c.item);
 
-  selected = selected.filter((it) => !alreadySent.has(it.link)).slice(0, gate.maxPerRun);
+  // Les alertes d'abord, et elles ne comptent pas dans le quota du run.
+  const watched = selected.filter(bypass);
+  const rest = selected.filter((it) => !bypass(it)).slice(0, gate.maxPerRun);
+  selected = [...watched, ...rest].filter((it) => !alreadySent.has(it.link));
 
   if (!selected.length) {
     log(`ما كاين حتى خبر دار البوابة (نقطة ≥ ${gate.minScore} · ≤ ${gate.maxStoryAgeHours || gate.maxAgeHours}س)`);
@@ -171,7 +181,7 @@ async function deliver({ cfg, args, payload, history, log, now }) {
       { title: item.title, summary: item.summary, link: item.link, lastDate: item.publishedAt },
       { score: item.score, cat: item.category, why: item.why, signals: item.signals },
       item.post,
-      { format: channel.format },
+      { format: channel.format, watch: item.watch, ministers: item.ministers },
     );
     const imageUrl = cfg.delivery?.sendImage === false ? '' : item.image;
 
@@ -229,12 +239,29 @@ async function main() {
     return { cluster, ...scored };
   });
 
+  // 3.b Mots-cles sous surveillance (ex. le remaniement gouvernemental) :
+  // on les marque AVANT tout filtrage, sinon un sujet peu couvert mais
+  // critique disparait du classement avant d'etre vu.
+  const alerts = applyWatchlist(items, cfg, now);
+  const watched = items.filter((it) => it.watch);
+  if (watched.length) log(`قائمة المراقبة: ${watched.length} موضوع · ${alerts.length} تنبيه مؤكد`);
+  for (const a of alerts) log(`${a.watch.label} — مؤكد: «${a.cluster.title.slice(0, 50)}…»`);
+
   if (args.category) items = items.filter((it) => it.cat === args.category);
   if (args['min-score']) items = items.filter((it) => it.score >= Number(args['min-score']));
 
-  items.sort((a, b) => b.score - a.score);
+  // Un sujet surveille passe devant, meme a note egale.
+  items.sort((a, b) => (Number(Boolean(b.watch?.promoted)) - Number(Boolean(a.watch?.promoted)))
+    || (b.score - a.score));
   items = items.slice(0, cfg.runtime.topLimit);
-  log(`ترتيب: أعلى نقطة ${items[0] ? items[0].score : 0}/100`);
+  // items[0] peut etre un sujet surveille a note modeste : on annonce le vrai maximum.
+  log(`ترتيب: أعلى نقطة ${Math.max(0, ...items.map((it) => it.score))}/100`);
+
+  // Noms et portefeuilles : on lit le corps des articles des alertes.
+  // Uniquement pour les annonces confirmees : lire quatre articles coute du temps.
+  for (const it of items.filter((x) => x.watch?.extractMinisters && x.watch.bypassGate).slice(0, 2)) {
+    it.ministers = await harvestMinisters(it, cfg, deadline, log);
+  }
 
   // 4. Enrichissement puis redaction
   await enrichImages(items, cfg, deadline, log);
@@ -262,6 +289,9 @@ async function main() {
       parts: it.parts,
       signals: it.signals,
       why: it.why,
+      watch: it.watch || null,
+      ministers: it.ministers || null,
+      scoreBeforeWatch: it.scoreBeforeWatch ?? null,
       post: composePost(it.cluster, it),
     })),
   };

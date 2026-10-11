@@ -151,19 +151,47 @@ const FORMATS = {
   plain: { bold: (t) => t, esc: (t) => t },
 };
 
-export function composeBrief(cluster, scored, post = null, { format = 'whatsapp' } = {}) {
+/**
+ * Bloc nom / portefeuille d'une alerte de remaniement. On plafonne la liste :
+ * la legende d'une image WhatsApp/Telegram ne depasse pas 1024 caracteres.
+ */
+function ministersBlock(ministers, fmt, max = 12) {
+  if (!ministers || !ministers.length) return [];
+  const lines = ['', fmt.bold('🏛 الأسماء والمناصب:')];
+  for (const m of ministers.slice(0, max)) {
+    lines.push(`• ${fmt.esc(m.portfolio)} — ${fmt.bold(fmt.esc(m.name))}`);
+  }
+  const rest = ministers.length - max;
+  if (rest > 0) lines.push(`• و${arPlural(rest, { one: 'منصب آخر', two: 'منصبان آخران', few: 'مناصب أخرى', many: 'منصبًا آخر' })}`);
+  // Honnete : ces couples sont lus automatiquement dans le corps des articles,
+  // qui citent aussi l'ancienne equipe. On le dit au lieu de faire semblant.
+  lines.push('⚠️ الأسماء مستخرجة آليًا من نص المقالات — تأكد منها قبل النشر');
+  return lines;
+}
+
+export function composeBrief(cluster, scored, post = null, { format = 'whatsapp', watch = null, ministers = null } = {}) {
   const fmt = FORMATS[format] || FORMATS.whatsapp;
   const emoji = CAT_EMOJI[scored.cat] || '📰';
   const label = CAT_LABEL[scored.cat] || scored.cat;
   const paragraph = trimSentence(cluster.summary || '', 300);
   const reasons = scored.why.slice(0, 2).join(' · ');
 
-  const lines = [
+  const lines = [];
+  // Sujet sous surveillance : l'entete dit pourquoi il arrive hors porte virale.
+  if (watch) {
+    lines.push(fmt.bold(fmt.esc(`${watch.label} — أولوية قصوى`)));
+    lines.push(watch.confirmed
+      ? fmt.esc(`✅ مؤكد: ${watch.confirms.slice(0, 2).join(' · ')}`)
+      : fmt.esc('⏳ لحظة بلحظة — الموضوع مازال فمرحلة المشاورات'));
+    lines.push('');
+  }
+  lines.push(
     `${emoji} ${fmt.bold(label)} · نقطة البوز ${scored.score}/100`,
     '',
     fmt.bold(fmt.esc(cluster.title.trim())),
-  ];
+  );
   if (paragraph && paragraph.length > 40) lines.push('', fmt.esc(paragraph));
+  lines.push(...ministersBlock(ministers, fmt));
   lines.push('', `📊 ${fmt.esc(reasons)}`);
   const sources = arPlural(scored.signals.sourceCount, { one: 'مصدر واحد', two: 'مصدران', few: 'مصادر', many: 'مصدرًا' });
   lines.push(`🕐 ${ago(cluster.lastDate)} · ${sources}`);

@@ -18,6 +18,7 @@ import { composeBrief, composePost } from '../src/compose.js';
 import { normalizePhone, waConfig } from '../src/whatsapp.js';
 import { resolveChannel, CHANNELS } from '../src/channels.js';
 import { passesGate } from '../src/index.js';
+import { applyWatchlist, extractMinisters } from '../src/watch.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
@@ -304,4 +305,148 @@ test('resolveChannel signale precisement les variables manquantes', () => {
 
 test('le canal par defaut de la config existe', () => {
   assert.ok(CHANNELS[cfg.delivery.channel], `canal inconnu : ${cfg.delivery.channel}`);
+});
+
+// ── liste de surveillance (priorite absolue) ──────────────────────────────
+const watchCfg = {
+  watchlist: [{
+    id: 'gov', label: '🚨 الحكومة', keywords: ['تشكيل الحكومة', 'الحقائب الوزارية'],
+    confirmKeywords: ['تعيين أعضاء الحكومة', 'أدى اليمين'],
+    bypassGate: true, maxAlertsPerRun: 2, maxPromoted: 3,
+    scoreFloor: 95, extractMinisters: true, maxAgeHours: 24, minSources: 1,
+  }],
+};
+const watchItem = (o = {}) => ({
+  score: 34, link: 'https://hespress.com/g', title: 'خبر', summary: '',
+  publishedAt: Date.now() - HOUR, signals: { sourceCount: 2 }, ...o,
+});
+
+test('les tractations sont promues mais ne sautent pas la porte', () => {
+  // Une journee de negociations ne doit pas remplir le telephone : priorite
+  // au classement, oui ; envoi immediat, non.
+  const it = watchItem({ title: 'تسريع تشكيل الحكومة الجديدة' });
+  assert.deepEqual(applyWatchlist([it], watchCfg), []);
+  assert.equal(it.watch.confirmed, false);
+  assert.equal(it.watch.promoted, true);
+  assert.equal(it.watch.bypassGate, false);
+  assert.equal(it.score, 34, 'la note des tractations ne doit pas etre gonflee');
+});
+
+test('un mot de confirmation declenche l alerte immediate', () => {
+  const it = watchItem({ title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة انتهى' });
+  const alerts = applyWatchlist([it], watchCfg);
+  assert.deepEqual(alerts, [it]);
+  assert.equal(it.watch.confirmed, true);
+  assert.equal(it.watch.bypassGate, true);
+  assert.equal(it.score, 95);
+  assert.equal(it.scoreBeforeWatch, 34);
+  assert.ok(it.watch.confirms.length >= 1);
+});
+
+test('le nombre d alertes par passage est plafonne', () => {
+  const many = Array.from({ length: 6 }, (_, i) => watchItem({
+    title: `تعيين أعضاء الحكومة الجديدة ${i}`, summary: 'تشكيل الحكومة',
+    link: `https://hespress.com/g${i}`,
+  }));
+  const alerts = applyWatchlist(many, watchCfg);
+  assert.equal(alerts.length, watchCfg.watchlist[0].maxAlertsPerRun);
+  assert.equal(many.filter((x) => x.watch.promoted).length, watchCfg.watchlist[0].maxPromoted);
+});
+
+test('l alerte prefere un lien direct a une redirection Google News', () => {
+  const announce = { title: 'تعيين أعضاء الحكومة', summary: 'تشكيل الحكومة' };
+  const redirect = watchItem({ ...announce, link: 'https://news.google.com/rss/articles/xyz' });
+  const direct = watchItem({ ...announce, link: 'https://hespress.com/direct' });
+  const alerts = applyWatchlist([redirect, direct], { watchlist: [{ ...watchCfg.watchlist[0], maxAlertsPerRun: 1 }] });
+  assert.deepEqual(alerts, [direct]);
+});
+
+test('la surveillance ignore un sujet hors fenetre et un sujet hors sujet', () => {
+  const old = watchItem({ title: 'تشكيل الحكومة', publishedAt: Date.now() - 48 * HOUR });
+  const other = watchItem({ title: 'الرجاء يفوز على الوداد' });
+  assert.deepEqual(applyWatchlist([old, other], watchCfg), []);
+  assert.equal(old.watch, undefined);
+  assert.equal(other.score, 34);
+});
+
+test('la surveillance fonctionne aussi sur la forme interne { cluster }', () => {
+  const it = {
+    cluster: { title: 'أدى اليمين أعضاء الحكومة الجديدة بعد توزيع الحقائب الوزارية', summary: '', lastDate: Date.now() },
+    score: 20, signals: { sourceCount: 1 },
+  };
+  assert.equal(applyWatchlist([it], watchCfg).length, 1);
+  assert.equal(it.score, 95);
+});
+
+test('une alerte confirmee saute la porte virale', () => {
+  // Meme logique que deliver() : bypassGate court-circuite passesGate.
+  const it = watchItem({
+    title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة',
+    signals: { sourceCount: 1 }, publishedAt: Date.now() - 20 * HOUR,
+  });
+  applyWatchlist([it], watchCfg);
+  assert.equal(passesGate({ ...it, signals: { sourceCount: 1, medianAgeHours: 20 } }, gate).pass, false);
+  assert.equal(it.watch.bypassGate, true, 'la liste de surveillance doit court-circuiter la porte');
+});
+
+// ── extraction nom / portefeuille ─────────────────────────────────────────
+test('extractMinisters lit les trois formes de la presse marocaine', () => {
+  const byPortfolio = extractMinisters('وعين الملك وزير الداخلية عبد الوافي لفتيت ووزيرة الصحة والحماية الاجتماعية أمينة بنخضرا');
+  assert.ok(byPortfolio.some((m) => m.name.includes('لفتيت') && m.portfolio.includes('الداخلية')));
+  assert.ok(byPortfolio.some((m) => m.portfolio === 'الصحة والحماية الاجتماعية'));
+
+  const byName = extractMinisters('وجاءت فاطمة الزهراء المنصوري وزيرة للإسكان');
+  assert.ok(byName.some((m) => m.name.includes('المنصوري') && m.portfolio.includes('الإسكان')));
+
+  const asList = extractMinisters('الداخلية: عبد الوافي لفتيت — العدل: عبد اللطيف وهبي');
+  assert.equal(asList.length, 2);
+});
+
+test('extractMinisters ne rend aucun nom sur une histoire de tractations', () => {
+  const none = extractMinisters('تتواصل المشاورات بين الأحزاب حول تشكيل الحكومة الجديدة ولم يتم الاتفاق بعد');
+  assert.deepEqual(none, []);
+});
+
+test('extractMinisters ne confond pas un portefeuille avec un nom', () => {
+  for (const m of extractMinisters('وزير الصحة والحماية الاجتماعية أمينة بنخضرا')) {
+    assert.ok(!m.name.includes('الحماية'), `nom pollue : ${m.name}`);
+    assert.ok(m.name.split(/\s+/).length <= 4);
+  }
+});
+
+// ── mise en forme de l alerte ─────────────────────────────────────────────
+test('le brief d une alerte porte l entete et le tableau nom/poste', () => {
+  const text = composeBrief(
+    { title: 'التشكيلة الحكومية الجديدة', summary: 'x'.repeat(60), link: 'https://hespress.com/g', lastDate: Date.now() },
+    { score: 95, cat: 'politique', why: ['سبب'], signals: { sourceCount: 4 } },
+    null,
+    {
+      format: 'whatsapp',
+      watch: { label: '🚨 التشكيل الحكومي', confirmed: true, confirms: ['تعيين'] },
+      ministers: [{ portfolio: 'الداخلية', name: 'عبد الوافي لفتيت' }],
+    },
+  );
+  assert.ok(text.includes('أولوية قصوى'));
+  assert.ok(text.includes('الأسماء والمناصب'));
+  assert.ok(text.includes('الداخلية — *عبد الوافي لفتيت*'));
+});
+
+test('la liste des ministres reste bornee pour tenir en legende', () => {
+  const many = Array.from({ length: 30 }, (_, i) => ({ portfolio: `قطاع ${i}`, name: `اسم فلان ${i}` }));
+  const text = composeBrief(
+    { title: 'الحكومة', summary: '', link: '', lastDate: Date.now() },
+    { score: 95, cat: 'politique', why: [], signals: { sourceCount: 4 } },
+    null,
+    { format: 'whatsapp', watch: { label: 'ح', confirmed: true, confirms: [] }, ministers: many },
+  );
+  assert.ok(text.length <= 1024, `legende trop longue : ${text.length}`);
+});
+
+test('la config embarque la veille gouvernementale active', () => {
+  const entry = (cfg.watchlist || []).find((w) => w.id === 'gov-formation');
+  assert.ok(entry, 'watchlist gov-formation absente de config.json');
+  assert.notEqual(entry.enabled, false);
+  assert.equal(entry.bypassGate, true);
+  assert.equal(entry.extractMinisters, true);
+  assert.ok(entry.keywords.length >= 5 && entry.confirmKeywords.length >= 5);
 });
