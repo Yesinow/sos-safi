@@ -11,7 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { parseFeed, parseTrends, parseOpenGraph, stripTags } from '../src/rss.js';
-import { normalize, tokenSet, similarity, originalTerms } from '../src/normalize.js';
+import { normalize, tokenSet, similarity, originalTerms, hasWord } from '../src/normalize.js';
 import { clusterArticles } from '../src/cluster.js';
 import { scoreCluster, categorize, arPlural } from '../src/score.js';
 import { composeBrief, composePost } from '../src/compose.js';
@@ -151,6 +151,124 @@ const buildCluster = (ageH, sources) => {
   }));
   return clusterArticles(arts)[0];
 };
+
+// ── moteur de debat et ligne editoriale ───────────────────────────────────
+const one = (title, extra = {}) => clusterArticles([
+  article({ title, cat: extra.cat || 'politique', ...extra }),
+])[0];
+const noteOf = (title, extra = {}) => scoreCluster(one(title, extra),
+  { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+
+test('un sujet qui divise bat un communique repris par tout le monde', () => {
+  // Le coeur du projet : la reprise mesure l'interet des redactions, le debat
+  // mesure l'envie de commenter. Trente reprises d'un communique ne valent pas
+  // une facture d'eau qui augmente.
+  const communique = noteOf('وزارة التجهيز تعلن عن اجتماع تنسيقي حول البرنامج السنوي');
+  const facture = noteOf('غلاء فاتورة الماء والكهرباء يثير غضب الأسر.. من المسؤول عن الزيادة؟');
+  assert.ok(facture.score > communique.score,
+    `debat ${facture.score} devrait depasser communique ${communique.score}`);
+  assert.ok(facture.signals.debateAxes.length >= 1, 'les axes doivent etre reconnus');
+});
+
+test('toucher deux axes de fracture vaut plus qu un seul', () => {
+  // Le second axe est choisi SANS mot d'accusation : sinon la ligne
+  // editoriale penalise la source unique et masque le gain mesure ici.
+  const un = noteOf('ارتفاع أسعار المحروقات يثير انتقادات');
+  const deux = noteOf('ارتفاع أسعار المحروقات يثير انتقادات ومطالب بدعم نقل التلاميذ إلى المدرسة');
+  assert.ok(deux.signals.debateAxes.length > un.signals.debateAxes.length,
+    `axes: ${JSON.stringify(deux.signals.debateAxes)} vs ${JSON.stringify(un.signals.debateAxes)}`);
+  assert.ok(deux.score > un.score, `deux axes ${deux.score} > un axe ${un.score}`);
+});
+
+test('un axe double d une accusation non corroboree ne profite pas du gain', () => {
+  // Cas reel du reglage : « الفساد » est a la fois un axe de debat et un mot
+  // d'accusation. Le gain de debat ne doit pas annuler la prudence.
+  const s = noteOf('ارتفاع أسعار المحروقات ومطالب بكشف تقرير الفساد في الصفقات العمومية');
+  assert.ok(s.signals.debateAxes.includes('فساد'));
+  assert.ok(s.signals.guardFactor < 1, 'la prudence reste appliquee');
+});
+
+test('un axe ne se declenche pas sur une sous-chaine', () => {
+  // Cas reel : « حكمة كندية تقود مواجهة المغرب » (une ARBITRE) etait classee
+  // axe JUSTICE parce que « الحكم » se trouve dans « حكمة ».
+  const arbitre = noteOf('حكمة كندية تقود مواجهة المغرب ونيوزيلندا في مونديال أقل من 17 سنة', { cat: 'sport' });
+  assert.ok(!arbitre.signals.debateAxes.includes('عدالة'), 'une arbitre n est pas un sujet judiciaire');
+
+  assert.equal(hasWord(normalize('حكمة كندية'), 'الحكم'), false);
+  assert.equal(hasWord(normalize('قرر الحكم إلغاء الهدف'), 'الحكم'), true);
+  assert.equal(hasWord(normalize('بالحكم القضائي'), 'الحكم'), true, 'les proclitiques restent acceptes');
+});
+
+test('un mot croise au fil du resume ne cree pas un axe plein', () => {
+  // Cas reels : « رمضان » dans un article sur la guerre de 1973, « المدرسة »
+  // dans un dossier sur le handicap. Le sujet n'est ni religieux ni scolaire.
+  const guerre = scoreCluster(clusterArticles([article({
+    title: 'حرب تشرين 1973 ومشاركة الجيش العربي الأردني',
+    summary: 'وقعت المعارك في شهر رمضان من ذلك العام',
+    cat: 'monde',
+  })])[0], { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+  assert.deepEqual(guerre.signals.debateStrongAxes, [], 'aucun axe central');
+
+  // Deux mots du meme axe dans le corps : l'axe compte, mais en arriere-plan.
+  const dossier = scoreCluster(clusterArticles([article({
+    title: 'سلسلة مغرب الحضارة: الإعاقة مسؤولية الدولة والمجتمع',
+    summary: 'يتناول الملف وضعية التلاميذ في المدرسة العمومية وشروط التعليم الدامج',
+    cat: 'societe',
+  })])[0], { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+  assert.ok(dossier.signals.debateAxes.includes('تعليم'));
+  assert.ok(!dossier.signals.debateStrongAxes.includes('تعليم'), 'arriere-plan, pas axe central');
+  assert.ok(dossier.why.some((w) => w.includes('خلفية')), 'et c est dit dans l explication');
+});
+
+test('un axe dans le titre pese plus que le meme axe dans le corps', () => {
+  const titre = scoreCluster(clusterArticles([article({
+    title: 'غلاء أسعار المواد الغذائية يثير غضب الأسر',
+    summary: 'تقرير جديد', cat: 'societe',
+  })])[0], { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+  const corps = scoreCluster(clusterArticles([article({
+    title: 'ندوة حول الاقتصاد الوطني بالرباط',
+    summary: 'تناولت الندوة غلاء الأسعار وتراجع القدرة الشرائية', cat: 'societe',
+  })])[0], { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+  assert.ok(titre.parts.debate > corps.parts.debate,
+    `titre ${titre.parts.debate} devrait depasser corps ${corps.parts.debate}`);
+});
+
+test('un titre-question est reconnu comme appel au commentaire', () => {
+  const s = noteOf('هل ستنجح حكومة المنصوري في خفض أسعار المواد الغذائية؟');
+  assert.equal(s.signals.asksQuestion, true);
+  assert.ok(s.why.some((w) => w.includes('سؤال مفتوح')));
+});
+
+test('la ligne editoriale ecarte le sordide', () => {
+  const s = noteOf('العثور على جثة مقطعة بحي شعبي');
+  assert.equal(s.blocked, 'جثة مقطعة', 'doit etre marque bloque');
+  assert.equal(s.score, 0, 'et tomber a zero');
+});
+
+test('une formule racoleuse est penalisee sans etre effacee', () => {
+  const propre = noteOf('ارتفاع أسعار الخضر يثير غضب المستهلكين');
+  const racoleur = noteOf('لن تصدق ارتفاع أسعار الخضر يثير غضب المستهلكين');
+  assert.ok(racoleur.score < propre.score, 'le racolage doit couter');
+  assert.ok(racoleur.score > 0, 'mais le sujet reste visible');
+  assert.ok(racoleur.signals.guardReasons.some((r) => r.includes('رخيصة')));
+});
+
+test('une accusation tenue par un seul site recule', () => {
+  const titre = 'تقرير يتهم مسؤولا باختلاس المال العام في صفقة عمومية';
+  const seul = noteOf(titre);
+  const corrobore = scoreCluster(clusterArticles([
+    article({ title: titre, link: 'https://a.ma/1', source: 'A', cat: 'politique' }),
+    article({ title: titre, link: 'https://b.ma/1', source: 'B', cat: 'politique' }),
+  ])[0], { cfg, trends: [], pageProfile: null, history: [], now: Date.now() });
+  assert.ok(seul.signals.guardFactor < 1, 'un seul site : penalite');
+  assert.equal(corrobore.signals.guardFactor, 1, 'deux sites : plus de penalite');
+});
+
+test('la penalite editoriale a un plancher', () => {
+  const s = noteOf('لن تصدق صدمة مصادر مطلعة تتهم مسؤولا بالرشوة في فضيحة خطير جدا');
+  assert.ok(s.signals.guardFactor >= (cfg.editorialGuard.floor - 1e-9),
+    `plancher respecte, obtenu ${s.signals.guardFactor}`);
+});
 
 test('un sujet frais marque plus que le meme sujet ancien', () => {
   const ctx = { cfg, trends: [], pageProfile: null, history: [], now: Date.now() };

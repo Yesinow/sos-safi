@@ -80,3 +80,32 @@ export function originalTerms(text, limit = 5) {
   }
   return out;
 }
+
+// ── frontiere de mot arabe ────────────────────────────────────────────────
+// Piege rencontre deux fois en production : `\b` de JavaScript ne connait que
+// l'ASCII, donc une recherche par sous-chaine trouve « الحكم » dans « حكمة »
+// (un titre sur une ARBITRE devient un sujet de JUSTICE). On borne donc par
+// lookaround sur la plage arabe, en acceptant devant le mot les seuls
+// proclitiques qui n'en changent pas le sens.
+const AR_RANGE = '\\u0621-\\u064A';
+const PROCLITICS = '(?:و|ف|ب|ل|ك|ال|بال|لل|وال|فال|كال)?';
+const patternCache = new Map();
+
+/** Motif « ce mot, en debut de mot » — compile une seule fois par mot-cle. */
+export function wordPattern(keyword) {
+  const key = String(keyword);
+  let re = patternCache.get(key);
+  if (re) return re;
+  const body = normalize(key)
+    .replace(/^(?:ال)/, '')
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s+');
+  re = new RegExp(`(?<![${AR_RANGE}])${PROCLITICS}${body}(?![${AR_RANGE}])`);
+  patternCache.set(key, re);
+  return re;
+}
+
+/** Le texte normalise contient-il ce mot-cle, en mot entier ? */
+export function hasWord(normalizedText, keyword) {
+  return wordPattern(keyword).test(normalizedText);
+}

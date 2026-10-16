@@ -58,9 +58,47 @@ function hashtags(cluster, cat) {
 }
 
 /** Un « angle » de publication adapte au signal dominant. */
+// Pour chaque axe de fracture, l'angle qui fait commenter — formule la
+// question que le lecteur marocain a deja en tete, au lieu de resumer.
+const AXIS_ANGLE = {
+  'معيشة': 'اربط الخبر بجيب المغربي: شحال غادي يخسر/يربح فالشهر؟ سول الناس بشحال وليت كتخلص',
+  'تعليم': 'سول الأولياء: واش هاد القرار غادي ينفع ولادكم ولا لا؟ التعليم كيجيب شهادات شخصية',
+  'صحة': 'سول على التجربة: شكون دخل للمستعجلات هاد العام وشنو لقا؟',
+  'فساد': 'ركّز على الرقم والمسؤولية: شحال ضاع وشكون خاصو يجاوب — بلا ما تسمي حد بلا دليل',
+  'عدالة': 'حط السؤال المبدئي: واش القانون كيتطبق بحال بحال على الجميع؟',
+  'هوية': 'موضوع كيقسم بزاف — خلي السؤال محايد وخلي التعليقات هوما اللي يدويو',
+  'دين': 'موضوع حساس — صيغة السؤال أحسن من صيغة الرأي، وحيّد أي حكم على الناس',
+  'نساء': 'عطي الوجهين بإنصاف فالبوست نفسه، وسول: فين كاين الحق؟',
+  'هجرة': 'اربطو بالقصة الإنسانية ماشي بالأرقام وحدها',
+  'سيادة': 'زاوية وطنية — كتجيب تفاعل كبير، ولكن تأكد من المصدر الرسمي قبل النشر',
+  'رياضة_جدل': 'الجمهور كيحب يحكم بنفسو: حط اللقطة والسؤال، وخليه يقرر',
+  'مرفق_عام': 'سول: فين كاين هاد المشكل فحيكم؟ الناس كتعلق بالصور ديال حومتها',
+};
+
+const AXIS_LABEL_AR = {
+  'معيشة': 'القدرة الشرائية', 'تعليم': 'التعليم', 'صحة': 'الصحة', 'فساد': 'الفساد والريع',
+  'عدالة': 'العدالة', 'هوية': 'الهوية واللغة', 'دين': 'الدين والحريات', 'نساء': 'قضايا النساء',
+  'هجرة': 'الهجرة', 'سيادة': 'الوحدة الترابية', 'رياضة_جدل': 'جدل رياضي', 'مرفق_عام': 'الخدمات العمومية',
+};
+
 function angle(scored, cluster) {
   const s = scored.signals;
   const sites = arPlural(s.sourceCount, { one: 'موقع', two: 'موقعان', few: 'مواقع', many: 'موقعًا' });
+
+  // La ligne editoriale passe avant le trafic : si la garde a retenu quelque
+  // chose, c'est la premiere chose que tu dois lire.
+  if (s.guardReasons && s.guardReasons.length) {
+    return { type: 'guard', note: `⚖️ ${s.guardReasons.join(' · ')} — صلّح الصيغة ولا حيّد الخبر` };
+  }
+  // L'axe de debat prime sur la mecanique de diffusion : c'est lui qui
+  // transforme une reprise en conversation.
+  const axes = s.debateAxes || [];
+  if (axes.length) {
+    const label = axes.map((a) => AXIS_LABEL_AR[a] || a).join(' + ');
+    const tip = AXIS_ANGLE[axes[0]] || 'حط السؤال المباشر فآخر البوست';
+    const split = axes.length > 1 ? ' (موضوع كيقسم — التعليقات غادي تكثر)' : '';
+    return { type: 'debate', axes, note: `🔥 جدل: ${label}${split} — ${tip}` };
+  }
 
   if (cluster.linkIsRedirect) {
     return { type: 'redirect', note: 'الرابط ديال Google News — حلّو وخُذ الرابط الأصلي ديال الموقع قبل ما تنشر' };
