@@ -200,13 +200,28 @@ function trimName(raw) {
   return words.join(' ');
 }
 
+// Mots-outils arabes : aucun ne fait partie d'un nom de personne. Le « و » de
+// coordination est retire avant comparaison (« ومنذ » = « منذ »).
+const PARTICLES = [
+  'من', 'مع', 'في', 'على', 'عن', 'إلى', 'منذ', 'إذ', 'إذا', 'أن', 'إن', 'أو', 'أم', 'بل',
+  'لا', 'ما', 'هل', 'كيف', 'ماذا', 'لماذا', 'متى', 'أين', 'كل', 'بعض', 'نفس', 'حتى',
+  'لكن', 'ثم', 'قد', 'لقد', 'سوف', 'منصب', 'مناصب', 'البقاء', 'للبقاء', 'خلال', 'ضد',
+];
+
+/**
+ * Un vrai nom marocain n'a que des mots de trois lettres ou plus et aucun
+ * mot-outil : « كيف ستتصرف المنصوري مع » et « للبقاء في منصب », vus en
+ * production comme faux noms, tombent tous les deux sur ces deux regles.
+ */
 function plausibleName(raw) {
   const words = String(raw).trim().split(/\s+/);
   if (words.length < 2 || words.length > 4) return false;
   const norm = words.map(normalize);
   if (norm.some((w) => NAME_STOP.some((s) => w === normalize(s)))) return false;
+  const bare = (w) => (w.length > 2 && w.startsWith(normalize('و')) ? w.slice(1) : w);
+  if (norm.some((w) => PARTICLES.some((s) => bare(w) === normalize(s)))) return false;
   if (PORTFOLIOS.some((p) => normalize(raw).includes(normalize(p)))) return false;
-  return words.every((w) => w.length >= 2);
+  return words.every((w) => w.length >= 3);
 }
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -264,9 +279,16 @@ export function extractMinisters(text) {
   // Un portefeuille court peut avoir capture « والحماية الاجتماعية أمينة بنخضرا »
   // alors qu'une autre entree porte deja « أمينة بنخضرا » : on garde la courte.
   const all = [...found.values()];
-  return all.filter((a) => !all.some((b) => b !== a
+  const kept = all.filter((a) => !all.some((b) => b !== a
     && a.name.length > b.name.length
     && normalize(a.name).includes(normalize(b.name))));
+
+  // Un meme portefeuille attribue a plusieurs noms veut dire qu'on a lu une
+  // phrase, pas une liste : on ne devine pas lequel est le ministre, on jette
+  // le portefeuille entier. Mieux vaut aucun nom qu'un nom faux a publier.
+  const perPortfolio = new Map();
+  for (const m of kept) perPortfolio.set(m.portfolio, (perPortfolio.get(m.portfolio) || 0) + 1);
+  return kept.filter((m) => perPortfolio.get(m.portfolio) === 1);
 }
 
 /** Recupere le texte des articles du sujet et en extrait les noms. */

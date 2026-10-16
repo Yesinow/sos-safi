@@ -410,6 +410,23 @@ test('l annonce passee declenche bien l alerte malgre un corps bavard', () => {
   assert.equal(it.watch.confirmed, true);
 });
 
+test('un bout de phrase n est jamais un nom de ministre', () => {
+  // Faux couples reellement extraits le 16 octobre d'un article sur Wahbi :
+  // « العدل — كيف ستتصرف المنصوري مع », « العدل — للبقاء في منصب »…
+  const bruit = 'وهبي مرشح فوق العادة للبقاء وزيرا للعدل.. كيف ستتصرف المنصوري مع غضب المحامين؟'
+    + ' ومنذ تعيينه وزيرا للعدل، إذ ظل يدافع عن مشروعه، وخلال السنوات اللاحقة في العدل'
+    + ' واصل الدفاع عن رغبته للبقاء في منصب وزير العدل.';
+  assert.deepEqual(extractMinisters(bruit), []);
+});
+
+test('un portefeuille attribue a deux noms est jete', () => {
+  const ambigu = 'وزير الداخلية عبد الوافي لفتيت. وزير الداخلية محمد حصاد.'
+    + ' وزير الخارجية ناصر بوريطة.';
+  const out = extractMinisters(ambigu);
+  assert.deepEqual(out.map((m) => m.portfolio), ['الخارجية'], 'الداخلية est ambigu, on le jette');
+  assert.equal(out[0].name, 'ناصر بوريطة');
+});
+
 test('une liste fuitee par un seul site ne declenche pas d alerte', () => {
   // Le cas reel : « لائحة بأسماء أعضاء الحكومة الجديدة » publie par un seul
   // site, repris par personne. C'est une rumeur, pas une annonce.
