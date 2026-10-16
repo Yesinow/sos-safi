@@ -340,7 +340,10 @@ test('les tractations sont promues mais ne sautent pas la porte', () => {
 });
 
 test('un mot de confirmation declenche l alerte immediate', () => {
-  const it = watchItem({ title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة انتهى' });
+  const it = watchItem({
+    title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة انتهى',
+    signals: { sourceCount: 4 },
+  });
   const alerts = applyWatchlist([it], watchCfg);
   assert.deepEqual(alerts, [it]);
   assert.equal(it.watch.confirmed, true);
@@ -350,10 +353,22 @@ test('un mot de confirmation declenche l alerte immediate', () => {
   assert.ok(it.watch.confirms.length >= 1);
 });
 
+test('une liste fuitee par un seul site ne declenche pas d alerte', () => {
+  // Le cas reel : « لائحة بأسماء أعضاء الحكومة الجديدة » publie par un seul
+  // site, repris par personne. C'est une rumeur, pas une annonce.
+  const lone = watchItem({
+    title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة',
+    signals: { sourceCount: 1 },
+  });
+  assert.deepEqual(applyWatchlist([lone], watchCfg), []);
+  assert.equal(lone.watch.confirmed, true, 'le sujet reste marque comme confirme');
+  assert.equal(lone.watch.bypassGate, false, 'mais il ne saute pas la porte');
+});
+
 test('le nombre d alertes par passage est plafonne', () => {
   const many = Array.from({ length: 6 }, (_, i) => watchItem({
     title: `تعيين أعضاء الحكومة الجديدة ${i}`, summary: 'تشكيل الحكومة',
-    link: `https://hespress.com/g${i}`,
+    link: `https://hespress.com/g${i}`, signals: { sourceCount: 4 },
   }));
   const alerts = applyWatchlist(many, watchCfg);
   assert.equal(alerts.length, watchCfg.watchlist[0].maxAlertsPerRun);
@@ -361,7 +376,7 @@ test('le nombre d alertes par passage est plafonne', () => {
 });
 
 test('l alerte prefere un lien direct a une redirection Google News', () => {
-  const announce = { title: 'تعيين أعضاء الحكومة', summary: 'تشكيل الحكومة' };
+  const announce = { title: 'تعيين أعضاء الحكومة', summary: 'تشكيل الحكومة', signals: { sourceCount: 4 } };
   const redirect = watchItem({ ...announce, link: 'https://news.google.com/rss/articles/xyz' });
   const direct = watchItem({ ...announce, link: 'https://hespress.com/direct' });
   const alerts = applyWatchlist([redirect, direct], { watchlist: [{ ...watchCfg.watchlist[0], maxAlertsPerRun: 1 }] });
@@ -379,7 +394,7 @@ test('la surveillance ignore un sujet hors fenetre et un sujet hors sujet', () =
 test('la surveillance fonctionne aussi sur la forme interne { cluster }', () => {
   const it = {
     cluster: { title: 'أدى اليمين أعضاء الحكومة الجديدة بعد توزيع الحقائب الوزارية', summary: '', lastDate: Date.now() },
-    score: 20, signals: { sourceCount: 1 },
+    score: 20, signals: { sourceCount: 3 },
   };
   assert.equal(applyWatchlist([it], watchCfg).length, 1);
   assert.equal(it.score, 95);
@@ -389,7 +404,7 @@ test('une alerte confirmee saute la porte virale', () => {
   // Meme logique que deliver() : bypassGate court-circuite passesGate.
   const it = watchItem({
     title: 'تعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة',
-    signals: { sourceCount: 1 }, publishedAt: Date.now() - 20 * HOUR,
+    signals: { sourceCount: 3 }, publishedAt: Date.now() - 20 * HOUR,
   });
   applyWatchlist([it], watchCfg);
   assert.equal(passesGate({ ...it, signals: { sourceCount: 1, medianAgeHours: 20 } }, gate).pass, false);

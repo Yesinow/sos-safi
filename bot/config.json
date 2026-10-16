@@ -483,7 +483,6 @@
       "confirmKeywords": [
         "التشكيلة النهائية",
         "لائحة الوزراء",
-        "أعضاء الحكومة الجديدة",
         "أدى اليمين",
         "الملك يعين",
         "عين الملك",
@@ -495,6 +494,7 @@
         "وزيرة في"
       ],
       "bypassGate": true,
+      "minSourcesConfirmed": 2,
       "maxAlertsPerRun": 2,
       "maxPromoted": 3,
       "scoreFloor": 95,

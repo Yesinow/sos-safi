@@ -87,7 +87,10 @@ export function applyWatchlist(items, cfg, now = Date.now()) {
     mine.forEach((x, i) => {
       const w = x.item.watch;
       w.promoted = i < maxPromoted;
-      if (w.confirmed && entry.bypassGate !== false && alertCount < maxAlerts) {
+      // Une liste « fuitee » par un seul site n'est pas une annonce : tant que
+      // la nouvelle n'est pas reprise ailleurs, elle reste un sujet surveille.
+      const enoughSources = x.f.sourceCount >= (entry.minSourcesConfirmed ?? 2);
+      if (w.confirmed && enoughSources && entry.bypassGate !== false && alertCount < maxAlerts) {
         w.bypassGate = true;
         alertCount++;
         // Seule l'annonce confirmee merite le plancher de note : gonfler la
@@ -230,15 +233,24 @@ export function extractMinisters(text) {
 }
 
 /** Recupere le texte des articles du sujet et en extrait les noms. */
-export async function harvestMinisters(item, cfg, deadline, log) {
+export async function harvestMinisters(item, cfg, deadline, log, articles = []) {
   const cluster = item.cluster || item;
   // Les titres suffisent rarement : la liste nom/portefeuille est dans le
   // corps de l'article. On lit donc plusieurs membres du sujet, en evitant
-  // les liens de redirection Google qui ne rendent pas le texte.
-  const urls = [...new Set(
-    [cluster.link, ...(cluster.members || []).map((m) => m.link), ...(item.extraLinks || [])]
-      .filter((u) => u && !/news\.google\.com/.test(u)),
-  )].slice(0, 4);
+  // les liens de redirection Google, qui servent une page vide de texte.
+  const own = [cluster.link, ...(cluster.members || []).map((m) => m.link), ...(item.extraLinks || [])];
+
+  // Un sujet venu uniquement de Google News n'a aucun corps lisible. On va
+  // alors chercher le meme sujet dans les flux directs deja collectes :
+  // Hespress, Al3omk et les autres servent leur texte, eux.
+  const keys = (item.watch?.keywords || []).map(normalize);
+  const sameStory = keys.length
+    ? articles.filter((a) => a.link && !isRedirect(a.link)
+        && keys.some((k) => normalize(`${a.title} ${a.summary || ''}`).includes(k)))
+      .map((a) => a.link)
+    : [];
+
+  const urls = [...new Set([...own, ...sameStory].filter((u) => u && !isRedirect(u)))].slice(0, 6);
 
   const found = new Map();
   const add = (list) => list.forEach((m) => found.set(normalize(m.name), m));

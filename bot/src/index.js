@@ -260,7 +260,7 @@ async function main() {
   // Noms et portefeuilles : on lit le corps des articles des alertes.
   // Uniquement pour les annonces confirmees : lire quatre articles coute du temps.
   for (const it of items.filter((x) => x.watch?.extractMinisters && x.watch.bypassGate).slice(0, 2)) {
-    it.ministers = await harvestMinisters(it, cfg, deadline, log);
+    it.ministers = await harvestMinisters(it, cfg, deadline, log, articles);
   }
 
   // 4. Enrichissement puis redaction
