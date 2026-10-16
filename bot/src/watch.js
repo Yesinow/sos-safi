@@ -6,14 +6,50 @@ import { normalize } from './normalize.js';
 import { getText, pool } from './http.js';
 
 const HOUR = 3600 * 1000;
+const AR = '\\u0621-\\u064A';
+
+// Les proclitiques arabes qu'un mot de confirmation peut porter sans changer de
+// sens (« بتعيين », « والتشكيلة »). Un prefixe verbal (ي/س/ت…) n'est PAS dans la
+// liste : « يعين الملك » (le roi *va* nommer) ne doit jamais valider « عين الملك ».
+const CLITICS = '(?:و|ف|ب|ل|ك|ال|بال|لل|وال|فال)?';
+
+/**
+ * Un mot de confirmation ne compte qu'en debut de mot. Sans cette frontiere,
+ * « يرتقب أن يعين الملك » declenchait l'alerte : « عين الملك » (passe) est
+ * contenu dans « يعين الملك » (futur).
+ */
+function confirmPattern(keyword) {
+  const body = normalize(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return new RegExp(`(?<![${AR}])${CLITICS}${body}`);
+}
 
 /** Un sujet correspond-il a une entree de la liste ? */
-function matchEntry(text, entry) {
+function matchEntry(text, entry, title = '') {
   const hay = normalize(text);
   const hit = (list) => (list || []).filter((k) => hay.includes(normalize(k)));
   const keywords = hit(entry.keywords);
   if (!keywords.length) return null;
-  return { keywords, confirms: hit(entry.confirmKeywords) };
+
+  const confirms = (entry.confirmKeywords || []).filter((k) => confirmPattern(k).test(hay));
+
+  // Un titre d'anticipation (« المنصوري تترقب التعيين الملكي ») parle de ce qui
+  // *va* arriver : on garde le sujet en surveillance, sans alerte. Mais un mot
+  // de confirmation dans le titre lui-meme reste une annonce, meme si la suite
+  // du titre ajoute « ومن المنتظر عقد مجلس وزاري » : la suspension ne vaut que
+  // pour une confirmation vue seulement dans le corps.
+  const head = normalize(title || text);
+  const pendingAt = (entry.pendingKeywords || [])
+    .map((k) => [k, head.indexOf(normalize(k))]).filter(([, i]) => i >= 0);
+  const pending = pendingAt.map(([k]) => k);
+  // L'anticipation gouverne ce qui la SUIT : « من المنتظر تعيين أعضاء الحكومة »
+  // attend, « عين الملك … ومن المنتظر مجلس وزاري » annonce. Un mot de
+  // confirmation ne sauve donc le titre que s'il arrive avant.
+  const firstPending = pendingAt.length ? Math.min(...pendingAt.map(([, i]) => i)) : -1;
+  const kept = firstPending < 0 ? confirms : confirms.filter((k) => {
+    const at = head.search(confirmPattern(k));
+    return at >= 0 && at < firstPending;
+  });
+  return { keywords, confirms: kept, pending };
 }
 
 /**
@@ -24,6 +60,7 @@ function matchEntry(text, entry) {
 function fieldsOf(item) {
   const c = item.cluster || item;
   return {
+    title: c.title || '',
     text: `${c.title || ''} ${c.summary || ''}`,
     publishedAt: c.lastDate ?? item.publishedAt ?? 0,
     sourceCount: item.signals?.sourceCount ?? c.sourceCount ?? 0,
@@ -51,7 +88,7 @@ export function applyWatchlist(items, cfg, now = Date.now()) {
   for (const item of items) {
     const f = fieldsOf(item);
     for (const entry of list) {
-      const m = matchEntry(f.text, entry);
+      const m = matchEntry(f.text, entry, f.title);
       if (!m) continue;
       if (entry.maxAgeHours && (now - f.publishedAt) / HOUR > entry.maxAgeHours) continue;
       if (entry.minSources && f.sourceCount < entry.minSources) continue;
@@ -62,6 +99,7 @@ export function applyWatchlist(items, cfg, now = Date.now()) {
         keywords: m.keywords,
         confirmed: m.confirms.length > 0,
         confirms: m.confirms,
+        pending: m.pending,
         promoted: false,
         bypassGate: false,
         extractMinisters: Boolean(entry.extractMinisters),
@@ -172,7 +210,6 @@ function plausibleName(raw) {
 }
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const AR = '\\u0621-\\u064A';
 
 /**
  * Construit le motif d'un portefeuille. Deux pieges de l'arabe :

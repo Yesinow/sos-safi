@@ -318,7 +318,8 @@ test('stripTags nettoie le HTML double-encode de Google News', () => {
 const watchCfg = {
   watchlist: [{
     id: 'gov', label: '🚨 الحكومة', keywords: ['تشكيل الحكومة', 'الحقائب الوزارية'],
-    confirmKeywords: ['تعيين أعضاء الحكومة', 'أدى اليمين'],
+    confirmKeywords: ['تعيين أعضاء الحكومة', 'أدى اليمين', 'عين الملك'],
+    pendingKeywords: ['يرتقب', 'تترقب', 'من المنتظر'],
     bypassGate: true, maxAlertsPerRun: 2, maxPromoted: 3,
     scoreFloor: 95, extractMinisters: true, maxAgeHours: 24, minSources: 1,
   }],
@@ -351,6 +352,62 @@ test('un mot de confirmation declenche l alerte immediate', () => {
   assert.equal(it.score, 95);
   assert.equal(it.scoreBeforeWatch, 34);
   assert.ok(it.watch.confirms.length >= 1);
+});
+
+test('le futur « يعين الملك » ne vaut pas le passe « عين الملك »', () => {
+  // Cas reel du 16 octobre : « يرتقب أن يعين الملك … أعضاء الحكومة الجديدة »
+  // annoncait une nomination A VENIR. L'ancienne recherche par sous-chaine
+  // trouvait « عين الملك » dans « يعين الملك » et criait l'alerte.
+  const futur = watchItem({
+    title: 'المنصوري تترقب التعيين الملكي لحكومتها اليوم الجمعة',
+    summary: 'يرتقب أن يعين الملك محمد السادس أعضاء الحكومة الجديدة بعد صلاة الجمعة، بعد استكمال تشكيل الحكومة',
+    signals: { sourceCount: 10 },
+  });
+  assert.deepEqual(applyWatchlist([futur], watchCfg), [], 'aucune alerte');
+  assert.equal(futur.watch.confirmed, false);
+  assert.equal(futur.watch.promoted, true, 'le sujet reste prioritaire au classement');
+  assert.equal(futur.score, 34, 'et garde sa vraie note');
+});
+
+test('un proclitique ne casse pas un mot de confirmation', () => {
+  const it = watchItem({
+    title: 'بتعيين أعضاء الحكومة الجديدة', summary: 'تشكيل الحكومة انتهى',
+    signals: { sourceCount: 4 },
+  });
+  assert.deepEqual(applyWatchlist([it], watchCfg), [it]);
+  assert.equal(it.watch.confirmed, true);
+});
+
+test('un mot d anticipation dans le titre suspend l alerte', () => {
+  const it = watchItem({
+    title: 'من المنتظر تعيين أعضاء الحكومة', summary: 'تشكيل الحكومة',
+    signals: { sourceCount: 8 },
+  });
+  assert.deepEqual(applyWatchlist([it], watchCfg), []);
+  assert.equal(it.watch.confirmed, false);
+  assert.deepEqual(it.watch.pending, ['من المنتظر']);
+});
+
+test('un titre d annonce garde l alerte meme avec un « ومن المنتظر » apres', () => {
+  // Le titre reel attendu : « الملك يعين أعضاء الحكومة … ومن المنتظر عقد مجلس
+  // وزاري السبت ». La suspension ne doit pas avaler la vraie annonce.
+  const it = watchItem({
+    title: 'عين الملك أعضاء الحكومة الجديدة ومن المنتظر عقد مجلس وزاري السبت',
+    summary: 'تشكيل الحكومة',
+    signals: { sourceCount: 7 },
+  });
+  assert.deepEqual(applyWatchlist([it], watchCfg), [it]);
+  assert.equal(it.watch.confirmed, true);
+});
+
+test('l annonce passee declenche bien l alerte malgre un corps bavard', () => {
+  const it = watchItem({
+    title: 'عين الملك محمد السادس أعضاء الحكومة الجديدة',
+    summary: 'تشكيل الحكومة: أدى اليمين أمام الملك. وكان التعيين مرتقبا منذ أيام',
+    signals: { sourceCount: 6 },
+  });
+  assert.deepEqual(applyWatchlist([it], watchCfg), [it], 'le mot d anticipation est dans le corps, pas le titre');
+  assert.equal(it.watch.confirmed, true);
 });
 
 test('une liste fuitee par un seul site ne declenche pas d alerte', () => {

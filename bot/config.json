@@ -500,7 +500,22 @@
       "scoreFloor": 95,
       "extractMinisters": true,
       "maxAgeHours": 24,
-      "minSources": 1
+      "minSources": 1,
+      "pendingKeywords": [
+        "يرتقب",
+        "مرتقب",
+        "تترقب",
+        "يترقب",
+        "ينتظر",
+        "منتظر",
+        "يتوقع",
+        "متوقع",
+        "من المنتظر",
+        "من المرتقب",
+        "قبل صلاة الجمعة",
+        "على الأبواب",
+        "وشيك"
+      ]
     }
   ],
   "whatsapp": {
