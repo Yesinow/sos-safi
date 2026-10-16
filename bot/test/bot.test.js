@@ -656,11 +656,23 @@ test('la liste des ministres reste bornee pour tenir en legende', () => {
   assert.ok(text.length <= 1024, `legende trop longue : ${text.length}`);
 });
 
-test('la config embarque la veille gouvernementale active', () => {
+test('la veille gouvernementale est close mais reste rearmable', () => {
+  // Le gouvernement a ete nomme le 16 octobre 2026 : le dossier est clos et
+  // l'entree desactivee, sinon elle continue de pousser les sujets
+  // gouvernementaux en tete. Le mecanisme, lui, reste intact : il doit
+  // suffire de repasser enabled a true pour le prochain sujet prioritaire.
   const entry = (cfg.watchlist || []).find((w) => w.id === 'gov-formation');
   assert.ok(entry, 'watchlist gov-formation absente de config.json');
-  assert.notEqual(entry.enabled, false);
-  assert.equal(entry.bypassGate, true);
+  assert.equal(entry.enabled, false, 'dossier clos');
+  assert.equal(entry.bypassGate, true, 'le mecanisme reste complet');
   assert.equal(entry.extractMinisters, true);
   assert.ok(entry.keywords.length >= 5 && entry.confirmKeywords.length >= 5);
+  assert.ok(entry.pendingKeywords && entry.pendingKeywords.length >= 3);
+});
+
+test('une liste de veille desactivee ne promeut plus rien', () => {
+  const off = { watchlist: [{ ...watchCfg.watchlist[0], enabled: false }] };
+  const it = watchItem({ title: 'تعيين أعضاء الحكومة الجديدة', signals: { sourceCount: 9 } });
+  assert.deepEqual(applyWatchlist([it], off), []);
+  assert.equal(it.watch, undefined, 'le sujet n est meme plus marque');
 });
