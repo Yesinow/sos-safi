@@ -1,0 +1,53 @@
+# فحص آلي فكل Pull Request وكل دفعة لـmain.
+# كيخدم بلا شبكة وبلا تبعيات — فثواني، وبلا تقلبات عشوائية.
+
+name: فحص البوت
+
+on:
+  pull_request:
+    paths: ['bot/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['bot/**', '.github/workflows/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: صحة بناء الجملة
+        run: |
+          for f in bot/src/*.js bot/test/*.js; do
+            node --check "$f" || exit 1
+          done
+          echo "✅ جميع الملفات سليمة"
+
+      - name: صحة ملف الإعدادات
+        run: node -e "JSON.parse(require('fs').readFileSync('bot/config.json','utf8')); console.log('✅ config.json صالح')"
+
+      - name: الاختبارات
+        run: node --test bot/test/*.test.js
+
+      - name: التأكد من عدم تسريب الأسرار
+        run: |
+          # bot/test مستثنى: الأرقام فيه وهمية وكتختبر تطبيع الصيغ المغربية.
+          if grep -rnE '\b(212|0)[5-7][0-9]{8}\b' bot .github \
+               --include='*.js' --include='*.json' --include='*.yml' --include='*.md' \
+               --exclude-dir=test; then
+            echo "❌ رقم هاتف مسرّب" && exit 1
+          fi
+          if grep -rnE '(EAA[A-Za-z0-9]{20,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,})' bot .github; then
+            echo "❌ توكن مسرّب" && exit 1
+          fi
+          echo "✅ ما كاين حتى سر مسرّب"
